@@ -12,26 +12,21 @@ from dask.distributed import Client, LocalCluster
 import dask
 import geopandas as gpd
 import regionmask
-
-# # for plotting
-import matplotlib.pyplot as plt
-
-out_directory = '/storage/scratch/giub_geco/fbernhard/FORHYX/'
-# os.makedirs(out_directory, exist_ok=True)
-
-
-# A) PCWD:
-
-# B) PCWD:
-pcwd_input_path = '/storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_03_daily_pcwd.narm_v2-doy-reset_netcdf'
-#sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc'
-sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/daily-03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc'
-
-## some configurations
 dask.config.set({
     'distributed.comm.timeouts.connect': '60s',
     'distributed.comm.timeouts.tcp': '120s',
 })
+
+# # for plotting
+# import matplotlib.pyplot as plt
+
+out_directory = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/'
+# os.makedirs(out_directory, exist_ok=True)
+
+
+pcwd_input_path = '/storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_03_daily_pcwd.narm_v2-doy-reset_netcdf'
+sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc'
+#sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/daily-03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc' # backup rename
 
 def list_netcdf_files(root_dir, pattern):
     netcdf_files = []
@@ -85,20 +80,11 @@ if __name__ == '__main__':
                     chunks="auto" # {'time': 28, 'lat': 256, 'lon': 256}
                 )
 
-                # Remove the duplicate 360° endpoint and wrap to [-180, 180).
-                if np.isclose(ds_daily.lon[-1], 360.0):
-                    ds_daily = ds_daily.isel(lon=slice(None, -1))
-                ds_daily = (
-                    ds_daily
-                    .assign_coords(lon=((ds_daily.lon + 180) % 360) - 180)
-                    .sortby('lon')
-                )
-
             if curr_var == 'sce':
                 ### Step 4: Open Single NetCDF Files
-                sce_input_path
-                # TODO: continue here
                 ds_daily = xr.open_dataset(sce_input_path)
+                if 'SCE' in ds_daily.variables:
+                    ds_daily = ds_daily.rename_vars({"SCE":"SCE_ID"})
                 SCE_boolean = ds_daily != 0
                 SCE_boolean = SCE_boolean.rename_vars({"SCE_ID":"SCE_bool"})
 
@@ -112,8 +98,19 @@ if __name__ == '__main__':
                 # plt.savefig('figure_SCE_bool.png')
                 
                 ds_daily = SCE_boolean.rename({"longitude":"lon", "latitude":"lat", "valid_time":"time"})
-                # TODO: flip latitude to increasing. Then we can simplify below.
+                # NOTE that SCE_boolean has already longitudes between -180 and +180
 
+            # In order to subset region Europe:
+            # - Switch longitudes from between 0 and 360 to between -180 and +179.9.
+            # - Remove the duplicate 360° endpoint and wrap to [-180, 180).
+            # NOTE: both operations have no effect is data set is already from -180 to 180
+            if np.isclose(ds_daily.lon[-1], 360.0):
+                ds_daily = ds_daily.isel(lon=slice(None, -1))
+            ds_daily = (
+                ds_daily
+                .assign_coords(lon=((ds_daily.lon + 180) % 360) - 180)
+                .sortby('lon')
+            )
             print('\n\nFULL DAILY INPUT DATA SET TO AGGREGATE: ########################', flush=True)
             print(ds_daily, flush=True)
 
@@ -128,13 +125,12 @@ if __name__ == '__main__':
             
             ## Prepare ERA5Land data coordinates:
             # Crop before constructing a region × latitude × longitude array.
-            decreasing = np.diff(ds_daily.lat[range(0,2)])[0] < 0
-            lat_slice = slice(max_lat, min_lat) if decreasing else slice(min_lat, max_lat)
+            lat_is_decreasing = np.diff(ds_daily.lat[range(0,2)])[0] < 0
+            lat_slice = slice(max_lat, min_lat) if lat_is_decreasing else slice(min_lat, max_lat)
             ds_daily2 = ds_daily.sel(
                 lon=slice(min_lon, max_lon),
                 lat=lat_slice
             )
-            
             
             # Create mask with dimensions: region, lat, lon
             mask = regionmask.mask_3D_geopandas(
@@ -163,41 +159,28 @@ if __name__ == '__main__':
             # plt.savefig('figure_pcwd_region9.png')
 
             # 1. Resample spatially
-            if curr_var == 'pcwd':
-                # Compute mean per region using area-based weights
-                latitude_weights = np.cos(np.deg2rad(ds_daily3.lat))
-
-                regional_daily = (
-                    ds_daily3
-                    .weighted(latitude_weights)
-                    .mean(dim=('lat', 'lon'), skipna=True)
-                )
-
-            if curr_var == 'sce':
-                # Compute mean per region using area-based weights
-                latitude_weights = np.cos(np.deg2rad(ds_daily3.lat))
-                regional_daily = (
-                    ds_daily3
-                    .weighted(latitude_weights) # TODO: do we want to weight this as well?
-                    .mean(dim=('lat', 'lon'), skipna=True) # Taking the mean gives the (weighted) area fraction
-                )
+            # Compute mean per region using area-based weights
+            #   For boolean SCE taking the mean gives the (weighted) area fraction.
+            #   For numeric PCWD taking the mean gives the (weighted) mean across the region.
+            latitude_weights = np.cos(np.deg2rad(ds_daily3.lat))
+            regional_daily = (
+                ds_daily3
+                .weighted(latitude_weights)
+                .mean(dim=('lat', 'lon'), skipna=True)
+            )
 
             # 2. Resample temporally using built-in Dask-optimized resample
             # Compute mean per week
-            regional_weekly = regional_daily.resample(time='7D').mean() # TODO: do we want the regional mean? for both PCWD and SCE?
+            regional_weekly = regional_daily.resample(time='7D').mean()
 
             # 3. Output as CSV:
             if curr_var == 'pcwd':
-                pcwd_weekly_df = regional_weekly['pcwd_mm'].to_pandas()
-                pcwd_weekly_df.columns.name = 'region'
-                pcwd_weekly_df = pcwd_weekly_df.rename(
+                target_weekly_df = regional_weekly['pcwd_mm'].to_pandas()
+                target_weekly_df.columns.name = 'region'
+                target_weekly_df = target_weekly_df.rename(
                     columns=lambda region_id: f"region_{region_id}"
                 )
                 
-                csv_path = os.path.join(out_directory, f'FORHYX.targets.{curr_var}_regional_weekly.csv')
-                pcwd_weekly_df.to_csv(csv_path, index_label='time')
-                print(f'\n\nWrote weekly regional PCWD to {csv_path}', flush=True)
-
                 # # Check output visually:
                 # fig, ax = plt.subplots(figsize=(12, 6))
                 # regional_daily['pcwd_mm'].plot.line(
@@ -213,15 +196,18 @@ if __name__ == '__main__':
                 # plt.close(fig)
 
             if curr_var == 'sce':
-                sce_weekly_df = regional_weekly['SCE_bool'].to_pandas()
-                sce_weekly_df.columns.name = 'region'
-                sce_weekly_df = sce_weekly_df.rename(
+                target_weekly_df = regional_weekly['SCE_bool'].to_pandas()
+                target_weekly_df.columns.name = 'region'
+                target_weekly_df = target_weekly_df.rename(
                     columns=lambda region_id: f"region_{region_id}"
                 )
-                
-                csv_path = os.path.join(out_directory, f'FORHYX.targets.{curr_var}_regional_weekly.csv')
-                sce_weekly_df.to_csv(csv_path, index_label='time')
-                print(f'\n\nWrote weekly regional SCE to {csv_path}', flush=True)
+
+            start_year = pd.to_datetime(min(regional_weekly['time'].values)).year
+            end_year = pd.to_datetime(max(regional_weekly['time'].values)).year
+            year_range = f"{start_year}-{end_year}"
+            csv_path = os.path.join(out_directory, f'FORHYX.targets.{curr_var}_regional_weekly.{year_range}.csv')
+            target_weekly_df.to_csv(csv_path, index_label='time')
+            print(f'\n\nWrote weekly regional {curr_var} to {csv_path}', flush=True)
 
                 # # Check output visually:
                 # fig, ax = plt.subplots(2,1, figsize=(24, 6), sharex='all')
