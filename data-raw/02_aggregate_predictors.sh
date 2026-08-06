@@ -32,9 +32,9 @@ cd ~/GitHub/fabern/forhyx/data-raw
 echo "Start python script: $(date --rfc-3339=seconds)"
 conda activate forhyx
 
-# python3 02_aggregate_predictors.py --dataset-type era5 \
-#     --input-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily \
-#     --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/
+python3 02_aggregate_predictors.py --dataset-type era5 \
+    --input-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily \
+    --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/
 
 python3 02_aggregate_predictors.py --dataset-type era5-land \
     --input-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_UTCDaily \

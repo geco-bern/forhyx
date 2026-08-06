@@ -69,7 +69,7 @@ if __name__ == "__main__":
         if dataset_type == 'era5':
             vars = ['500.mean_z', 'mean_sst', 'mean_siconc'] # era5
         elif dataset_type == 'era5-land':
-            vars = ['mean_swvl1'] # , 'mean_snowc', 'max_t2m', 'min_t2m', 'mean_t2m', 'mean_d2m']
+            vars = ['mean_snowc', 'max_t2m', 'min_t2m', 'mean_t2m', 'mean_d2m', 'mean_swvl1']
 
         fname_prefix_map = {
             # era5-pressure:
@@ -87,6 +87,7 @@ if __name__ == "__main__":
         }
 
         for curr_var in vars: # curr_var = vars[0]
+            print(f"\n\nStart with variable {curr_var}: ########################", flush=True)
 
             ### Step 3: Check presence/absence and validity of NetCDF Files
             # List all NetCDF files in path
@@ -114,31 +115,85 @@ if __name__ == "__main__":
 
             ### Step 5: Aggregate in time (weekly) and in space (1 deg resolution)
 
-            # 1. Coarsen spatially FIRST (100x (or 16x) data reduction before temporal ops)
-            target_resolution = 1.0 # degrees
+            # 1. Aggregate into fixed 1-degree cells instead of coarsening from
+            # source coordinates. This gives identical output coordinates for
+            # both 0.25-degree ERA5 and 0.1-degree ERA5-Land inputs.
+            longitude_edges = np.arange(0.0, 361.0, 1.0)
+            longitude_centers = longitude_edges[:-1] + 0.5
+            latitude_edges = np.arange(-90.0, 91.0, 1.0)
+            latitude_centers = latitude_edges[:-1] + 0.5
 
-            # get current resolution (either 0.25 (ERA5) or 0.1 (ERA5-Land)) 
-            curr_grid_resolution = np.diff(ds_daily.longitude[0:2].values)[0] # NOTE: assumes lon-lat grid is homogenous
-            factor = int(target_resolution/curr_grid_resolution)
-            ds_coarse = ds_daily.coarsen(latitude=factor, longitude=factor, boundary="trim").mean()
+            # Treat 360 degrees as a duplicate of 0 degrees if it is present.
+            ds_daily = ds_daily.where(ds_daily.longitude < 360.0, drop=True)
+            ds_by_longitude = (
+                ds_daily
+                .groupby_bins(
+                    "longitude",
+                    longitude_edges,
+                    labels=longitude_centers,
+                    right=False,
+                )
+                .mean()
+                .rename({"longitude_bins": "longitude"})
+            )
 
-            # 2. Resample temporally LATER using built-in Dask-optimized resample
-            ds_weekly = ds_coarse.resample(valid_time="7D").mean()
+            # Grid-cell area is proportional to cos(latitude). Calculate the
+            # weighted mean as separate numerator and denominator datasets so
+            # missing values receive no weight on a variable-by-variable basis.
+            latitude_weights = xr.DataArray(
+                np.cos(np.deg2rad(ds_by_longitude.latitude)),
+                coords={"latitude": ds_by_longitude.latitude},
+                dims=("latitude",),
+                name="latitude_weights",
+            )
+            weighted_sum = (
+                (ds_by_longitude * latitude_weights)
+                .groupby_bins(
+                    "latitude",
+                    latitude_edges,
+                    labels=latitude_centers,
+                    right=True,
+                )
+                .sum(skipna=True)
+            )
+            weight_sum = (
+                (ds_by_longitude.notnull() * latitude_weights)
+                .groupby_bins(
+                    "latitude",
+                    latitude_edges,
+                    labels=latitude_centers,
+                    right=True,
+                )
+                .sum(skipna=True)
+            )
+            ds_coarse = (
+                (weighted_sum / weight_sum)
+                .rename({"latitude_bins": "latitude"})
+                .sortby("latitude", ascending=False)
+            )
+
+            # 2. Build 52 calendar-anchored weekly means for each year.  Each
+            # year contains Jan 1--Dec 30 (364 days); remaining year-end days
+            # are intentionally excluded so all years have exactly 52 values.
+            ds_coarse = ds_coarse.assign_coords(
+                valid_time=ds_coarse.valid_time.dt.floor("D")
+            ).sortby("valid_time")
+            years = np.unique(ds_coarse.valid_time.dt.year.values)
+            weekly_by_year = []
+            weekly_frequency = pd.Timedelta(days=7)
+            for year in years:
+                year_start = pd.Timestamp(year=int(year), month=1, day=1)
+                daily_index = pd.date_range(year_start, periods=52 * 7, freq="D")
+                weekly_by_year.append(
+                    ds_coarse
+                    .reindex(valid_time=daily_index)
+                    .resample(valid_time=weekly_frequency, origin=year_start)
+                    .mean()
+                )
+            ds_weekly = xr.concat(weekly_by_year, dim="valid_time")
 
             print("Aggregated weekly:", flush=True)
             print(ds_weekly, flush=True)
-
-            # NOTE: For rigorous spatial aggregation, use cosine weighting to account for grid-area on sphere:
-            # UNUSED: # Cosine-latitude weighting prior to coarsening or regridding
-            # UNUSED: weights = np.cos(np.deg2rad(ds_daily.latitude))
-            # UNUSED: weights.name = "weights"
-            # UNUSED: ds_weighted = ds_daily.weighted(weights)
-            # UNUSED: ds_weekly2 = (
-            # UNUSED:     ds_weighted.coarsen(latitude=factor, longitude=factor, boundary="trim")
-            # UNUSED:     .mean()
-            # UNUSED:     .resample(valid_time="7D")
-            # UNUSED:     .mean()
-            # UNUSED: )
 
             # variable specific steps
             if curr_var == "500.mean_z":
