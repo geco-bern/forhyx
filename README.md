@@ -1,22 +1,52 @@
 # FORHYX
 
-This repository contains the code for the FORHYX project
+This repository contains the code for the FORHYX project.
 
 ## Use
 
+### Data preparation
 Data preparation was done by running:
+
     - `data-raw/01_download_scalar_indices.py`.
     - `data-raw/02_aggregate_predictors.py`.
     - `data-raw/03_compute_targets.py`.
     - `data-raw/04_aggregate_targets.py`.
 
 Required input:
-    - TODO: document
-Result:
-    - `data/predictors.zarr`
-    - TODO: `data/targets.zarr`
 
-## Structure
+    - Daily ERA5 NetCDF files containing 500 hPa geopotential, sea-surface
+      temperature, sea-ice cover, CAPE, convective precipitation, and wind at
+      500, 900, and 925 hPa.
+    - Daily ERA5-Land NetCDF files containing snow cover, minimum/maximum/mean
+      2 m temperature, mean 2 m dew-point temperature, and mean layer-1 soil
+      water.
+    - Daily potential cumulative water deficit (PCWD) NetCDF files produced by
+      the [`cwd_global`](https://github.com/geco-bern/cwd_global) workflow.
+
+Result in output directory `/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/`:
+
+    - `FORHYX.targets.pcwd_regional_weekly.csv`
+    - `FORHYX.targets.sce_regional_weekly.csv`
+    - `FORHYX.predictors.era5land.max_t2m.2016-2025.nc`
+    - `FORHYX.predictors.era5land.mean_d2m.2016-2025.nc`
+    - `FORHYX.predictors.era5land.mean_snowc.2016-2025.nc`
+    - `FORHYX.predictors.era5land.mean_swvl1.2016-2025.nc`
+    - `FORHYX.predictors.era5land.mean_t2m.2016-2025.nc`
+    - `FORHYX.predictors.era5land.min_t2m.2016-2025.nc`
+    - `FORHYX.predictors.era5pressure.500_mean_z.2007-2025.nc`
+    - `FORHYX.predictors.era5single.mean_siconc.2010-2025.nc`
+    - `FORHYX.predictors.era5single.mean_sst.2010-2025.nc`
+
+Temporary data is stored into `/storage/scratch/giub_geco/fbernhard/FORHYX/`
+
+### Data analysis
+To run the ML analysis workflow run python scripts located in `data/` subdirectory. Namely:
+
+    - TO BE FILLED
+    - TO BE FILLED
+
+
+## Repository Structure
 
 ### The data folder
 
