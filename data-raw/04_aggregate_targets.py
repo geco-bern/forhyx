@@ -2,6 +2,7 @@
 
 ### Step 1: Import Libraries 
 # Import the required libraries:
+import argparse
 import os, fnmatch
 import pprint
 import time
@@ -20,13 +21,22 @@ dask.config.set({
 # # for plotting
 # import matplotlib.pyplot as plt
 
-out_directory = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/'
-# os.makedirs(out_directory, exist_ok=True)
-
-
 pcwd_input_path = '/storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_03_daily_pcwd.narm_v2-doy-reset_netcdf'
 sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc'
 #sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/daily-03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc' # backup rename
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Download ERA5 / ERA5Land data from the Climate Data Store (CDS).',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--out-path', default = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/',
+                             help="Root output directory.")
+    parser.add_argument('--start-year', type=int,
+                         help="Start year for filtering input files (inclusive).")
+    parser.add_argument('--end-year', type=int,
+                         help="End year for filtering input files (inclusive).")
+    return parser.parse_args()
 
 def list_netcdf_files(root_dir, pattern):
     netcdf_files = []
@@ -37,6 +47,13 @@ def list_netcdf_files(root_dir, pattern):
     return netcdf_files
 
 if __name__ == '__main__':
+    args = parse_args();
+
+    out_directory = args.out_path
+    # os.makedirs(out_directory, exist_ok=True)
+
+    start_year_requested = args.start_year
+    end_year_requested = args.end_year
 
     # cluster = LocalCluster(n_workers=min(64, int(os.environ['SLURM_NPROCS'])), threads_per_worker=1)
     # cluster = LocalCluster(n_workers=4, threads_per_worker=1)

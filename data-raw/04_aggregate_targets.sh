@@ -13,6 +13,10 @@
 #SBATCH --chdir=GitHub/fabern/forhyx/data-raw  # ensure to omit tilde ~/. Defines the working directory (relative to working directory where you submitted job via `sbatch`). This directory contains your script, and where the --output will be written
 #SBATCH --output=slurm-%x_%j.out        # --output relative to working directory (takes into account --chdir)
 
+#SBATCH --dependency=afterok:12313434
+
+# HOWTO: ssh ubelix; cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/04_aggregate_targets.sh
+
 # Taken from Github/fabern/aggregate-era5land-daily on 2026-07-19: proc.sh
 echo "Started on: $(date --rfc-3339=seconds)"
 echo "Hostname: $(hostname)"
@@ -30,7 +34,10 @@ cd ~/GitHub/fabern/forhyx/data-raw
 
 echo "Start python script: $(date --rfc-3339=seconds)"
 conda activate forhyx
-python3 04_aggregate_targets.py
+python3 04_aggregate_targets.py \
+    --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/ \
+    --start-year 2003 \
+    --end-year 2025
 conda deactivate
 
 echo "Finished on: $(date --rfc-3339=seconds)"

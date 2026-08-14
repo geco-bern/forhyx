@@ -35,6 +35,10 @@ def parse_args():
                              help="Root output directory.")
     parser.add_argument('--dataset-type', choices=['era5','era5-land'],
                          help="Controls data-set specifics; choose 'era5-land' or 'era5'.")
+    parser.add_argument('--start-year', type=int,
+                         help="Start year for filtering input files (inclusive).")
+    parser.add_argument('--end-year', type=int,
+                         help="End year for filtering input files (inclusive).")
     return parser.parse_args()
 
 def list_netcdf_files(root_dir, pattern):
@@ -56,6 +60,8 @@ if __name__ == "__main__":
     out_directory = args.out_path    # out_directory = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/'
     dataset_type = args.dataset_type # dataset_type =  'era5'
 
+    start_year_requested = args.start_year
+    end_year_requested = args.end_year
 
     # FOR INTERACTIVE SCRIPTING: cluster = LocalCluster(n_workers=min(64, int(os.environ['SLURM_NPROCS'])), threads_per_worker=1)
     # FOR INTERACTIVE SCRIPTING: client = Client(address=cluster)
@@ -95,6 +101,20 @@ if __name__ == "__main__":
             file_pattern = f'*_UTCDaily.{curr_var}*.nc'
             netcdf_files = list_netcdf_files(input_path, file_pattern)
             netcdf_files.sort()
+
+            # filter files by requested year range
+            filtered_netcdf_files = []
+            for fpath in netcdf_files:
+                # Extract the year from the filename (example filename: 'era5-pressure-levels_UTCDaily.500.mean_z.2016.nc')
+                filename = os.path.basename(fpath)
+                year_str = filename.split('.')[-2]  # Assuming the year is the second last
+                try:
+                    if start_year_requested <= int(year_str) <= end_year_requested:
+                        filtered_netcdf_files.append(fpath)
+                except ValueError:  
+                    print(f"Warning: Could not extract year from filename {filename}. Skipping this file.", flush=True)
+
+            netcdf_files = filtered_netcdf_files
 
             print("All files to treat:")
             pprint.pp(netcdf_files)
