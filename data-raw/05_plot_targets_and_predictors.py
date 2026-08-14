@@ -30,42 +30,19 @@ if __name__ == '__main__':
     input_dir = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/'
 
     ### Step 1: Open predictors
-    era5land_predictor_files = sorted(glob.glob(input_dir+'/FORHYX.predictors.era5land.*.2016-2025.nc')) # TODO: update years
-    era5land_predictor_files = [value for index,value in enumerate(era5land_predictor_files) 
-                                if 'snowc' not in value]
-    # TODO: find out why snowc had different longitudes (and also valid_time) than the other predictors, and how to fix it
-    # pprint.pp(era5land_predictor_files)
-    # Note ensure same time coordinates across all predictor files, otherwise reindex to common time coordinate
-    expected_valid_time = pd.DatetimeIndex(np.concatenate([
-        pd.date_range(f'{year}-01-01', periods=52, freq='7D').values
-        for year in range(2016, 2026)
-    ]))
-    def select_common_valid_time(ds):
-        return ds.reindex(
-            valid_time=expected_valid_time,
-            method='nearest',
-            tolerance=pd.Timedelta('3D'))
-
+    era5land_predictor_files = sorted(glob.glob(input_dir+'/FORHYX.predictors.era5land.*.2008-2008.nc')) # TODO: update years
     ds_predictors_era5land = xr.open_mfdataset(
         era5land_predictor_files,
-        preprocess=select_common_valid_time,
         combine='by_coords',
         compat='no_conflicts',
         join='exact',
-        # join='inner',
         chunks="auto", parallel =True
     )
 
-    era5_predictor_files = glob.glob(input_dir+'/FORHYX.predictors.era5p*.2004-2025.nc' # TODO: update years
-        ) + glob.glob(input_dir+'/FORHYX.predictors.era5s*.2010-2025.nc')               # TODO: update years
-    # pprint.pp(era5_predictor_files)
-    #[xr.open_mfdataset(f) for f in era5_predictor_files]
-    #[xr.open_mfdataset(f) for f in glob.glob(input_dir+'/FORHYX.predictors.era5p*.2004-2025.nc*')]
-    #[xr.open_mfdataset(f) for f in glob.glob(input_dir+'/FORHYX.predictors.era5s*.2010-2025.nc*')]
-    
+    era5_predictor_files = glob.glob(input_dir+'/FORHYX.predictors.era5p*.2009-2009.nc' # TODO: update years
+        ) + glob.glob(input_dir+'/FORHYX.predictors.era5s*.2009-2009.nc')               # TODO: update years
     ds_predictors_era5 = xr.open_mfdataset( 
         era5_predictor_files,
-        preprocess=select_common_valid_time,
         combine='by_coords',
         compat='no_conflicts',
         join='exact',
@@ -74,7 +51,13 @@ if __name__ == '__main__':
     # TODO: ensure coordinates are the same:
     # TODO: xr.concat([ds_predictors_era5, ds_predictors_era5land])
 
-    # TODO: add additional predictors (NAO) to the xarray.DataSet
+    # Read the monthly Jones/CRU NAO scalar predictor.
+    nao_csv_path = os.path.join(
+        input_dir, 'FORHYX.predictors.nao_monthly.csv'
+    )
+    df_nao = pd.read_csv(
+        nao_csv_path, parse_dates=['time'], index_col='time'
+    ).sort_index()
 
     ### Step 2: Read targets
     csv_path_sce  = input_dir+'FORHYX.targets.sce_regional_weekly.csv'
@@ -83,12 +66,17 @@ if __name__ == '__main__':
     # Read CSV as a time-indexed DataFrame
     df_sce  = pd.read_csv(csv_path_sce, parse_dates=['time'], index_col='time')
     df_pcwd = pd.read_csv(csv_path_pcwd, parse_dates=['time'], index_col='time')
-    
 
     ### Step 3: Create and save plot
     #### Step 3a: plot maps for a chosen date and show that date on CSV time series
     
     date_to_plot = pd.to_datetime('2022-07-01') # choose a date to visualise
+
+    # Crop the NAO index to the same time extent
+    plot_start = min(df_sce.index.min(), df_pcwd.index.min())
+    plot_end = max(df_sce.index.max(), df_pcwd.index.max())
+    df_nao_plot = df_nao.loc[plot_start:plot_end]
+
 
 
 
@@ -112,16 +100,21 @@ if __name__ == '__main__':
     n_maps = len(vars_to_map)
     ncols_maps = 3
     nrows_maps = int(np.ceil(n_maps/ncols_maps))
+    nrows_ts = 3 # number of rows for time series plots
 
-    fig = plt.figure(figsize=(5 * ncols_maps, (nrows_maps+2)*2.5))
+    fig = plt.figure(figsize=(5 * ncols_maps, (nrows_maps+nrows_ts)*2.5))
     gs = gridspec.GridSpec(
-        nrows_maps+2, ncols_maps, 
-        height_ratios=[7.5 for it in range(nrows_maps)] + [2.5, 2.5], hspace=0.3)
+        nrows_maps+nrows_ts, ncols_maps,
+        height_ratios=(
+            [7.5 for it in range(nrows_maps)] + [2.5, 2.5, 2.5]
+        ),
+        hspace=0.3,
+    )
 
-    # i) top row: maps
+    # i) map rows
     for i, var in enumerate(vars_to_map):
         # use Cartopy PlateCarree projection to preserve lon/lat aspect
-        ax_pos = (i//ncols_maps, i%ncols_maps) #  for i in [0,1,2,3,4]]
+        ax_pos = (0+i//ncols_maps, i%ncols_maps) #  for i in [0,1,2,3,4]]
         ax = fig.add_subplot(gs[*ax_pos], projection=ccrs.PlateCarree())
         try:
             # select by time coordinate
@@ -148,9 +141,17 @@ if __name__ == '__main__':
         except Exception as e:
             ax.text(0.5, 0.5, f'Error plotting {var}: {e}', ha='center')
 
-    # ii) bottom rows: CSV time series spanning all columns
-    ax_ts_sce  = fig.add_subplot(gs[nrows_maps,   :])
-    ax_ts_pcwd = fig.add_subplot(gs[nrows_maps+1, :], sharex=ax_ts_sce)
+    # ii) middle row: monthly scalar predictor
+    ax_ts_nao = fig.add_subplot(gs[nrows_maps+0, :])
+    ax_ts_nao.plot(
+        df_nao_plot.index, df_nao_plot['nao'],
+        color='tab:purple', linewidth=1.2, label='Jones/CRU NAO',
+    )
+    ax_ts_nao.axhline(0, color='black', linewidth=0.8, alpha=0.6)
+
+    # iii) bottom rows: target time series spanning all columns
+    ax_ts_sce  = fig.add_subplot(gs[nrows_maps+1, :], sharex=ax_ts_nao)
+    ax_ts_pcwd = fig.add_subplot(gs[nrows_maps+2, :], sharex=ax_ts_sce)
 
     # plot specified regions from CSV with discrete colors
     region_cols = ['region_10'] # use df_sce.columns.tolist() for all regions
@@ -163,16 +164,21 @@ if __name__ == '__main__':
 
     
     # vertical red line at the selected date
+    ax_ts_nao.axvline(date_to_plot, color='red', linestyle='--', linewidth=2, label=f'selected date: {pd.to_datetime(date_to_plot).date()}')
     ax_ts_sce.axvline( date_to_plot, color='red', linestyle='--', linewidth=2, label=f'selected date: {pd.to_datetime(date_to_plot).date()}')
     ax_ts_pcwd.axvline(date_to_plot, color='red', linestyle='--', linewidth=2, label=f'selected date: {pd.to_datetime(date_to_plot).date()}')
 
+    ax_ts_nao.set_title('Monthly Jones/CRU North Atlantic Oscillation index')
     ax_ts_sce.set_title( 'SCE weekly area fraction by region')
     ax_ts_pcwd.set_title('PCWD weekly average by region')
     #ax_ts_sce.set_xlabel('Time')
+    ax_ts_nao.set_ylabel('NAO index')
     ax_ts_sce.set_ylabel( 'Area fraction')
     ax_ts_pcwd.set_ylabel('PCWD (mm)')
+    ax_ts_nao.grid(alpha=0.3)
     ax_ts_sce.grid( alpha=0.3)
     ax_ts_pcwd.grid(alpha=0.3)
+    ax_ts_nao.legend(ncol=2, loc='upper left', bbox_to_anchor=(0.02, 0.98))
     ax_ts_sce.legend( title='region', ncol=1, loc='upper left', bbox_to_anchor=(0.02, 0.98))
 
     #fig.tight_layout()
