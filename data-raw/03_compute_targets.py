@@ -9,6 +9,7 @@
 
 ### Step 1: Import Libraries 
 # Import the required libraries:
+import argparse
 import os, fnmatch
 import pprint
 import time
@@ -41,9 +42,9 @@ import argparse as ap
 # # for plotting
 import matplotlib.pyplot as plt
 
-input_path    = '/storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/'
-
+input_path    = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily'
 out_directory = '/storage/scratch/giub_geco/fbernhard/FORHYX/'
+
 # os.makedirs(out_directory, exist_ok=True)
 # ll -h /storage/scratch/giub_geco/fbernhard/FORHYX/03*
 # rm -r /storage/scratch/giub_geco/fbernhard/FORHYX/03*
@@ -53,7 +54,7 @@ out_directory = '/storage/scratch/giub_geco/fbernhard/FORHYX/'
 # python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14 # TODO: 
 # ### NOTE: for predictors: For 2008-2025 with z.500, sst, siconc: nothing missing
 # ### NOTE: for targets:    For 2008-2026 with cape, cp, 500.u,500.v,925.u,925.v: cape.2026.01-07, cp.2026.06-07
-# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/
+# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
 # ### NOTE: for predictors: For 2010-2025 with mean_z.500, mean_sst, mean_siconc: nothing missing
 # ### NOTE: for targets:    For 2010-2025 with max_cape, tot_cp, mean_u500,mean_v500,mean_u925,mean_v925: missing tot_cp, max_cape
 
@@ -65,6 +66,17 @@ dask.config.set({
     "distributed.comm.timeouts.tcp": "120s",
 })
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Download ERA5 / ERA5Land data from the Climate Data Store (CDS).',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('--start-year', type=int,
+                         help="Start year for filtering input files (inclusive).")
+    parser.add_argument('--end-year', type=int,
+                         help="End year for filtering input files (inclusive).")
+    return parser.parse_args()
+
 def list_netcdf_files(root_dir, pattern):
     netcdf_files = []
     for root, dirs, files in os.walk(root_dir):
@@ -74,7 +86,16 @@ def list_netcdf_files(root_dir, pattern):
     return netcdf_files
 
 if __name__ == "__main__":
+    args = parse_args();
+    
+    start_year_requested = args.start_year
+    end_year_requested = args.end_year
 
+    start_date_str = '2022-01-01'
+    end_date_str   = '2022-02-03'
+    start_date_str = str(start_year_requested) + "-01-01"
+    end_date_str   = str(end_year_requested) + "-12-31"
+    
     cluster = LocalCluster(n_workers=min(64, int(os.environ['SLURM_CPUS_PER_TASK'])), threads_per_worker=1)
     # os.environ['SLURM_NTASKS'] # TODO: determine what to use in the next line
     # os.environ['SLURM_NPROCS'] # TODO: determine what to use in the next line
@@ -119,8 +140,8 @@ if __name__ == "__main__":
             compat='no_conflicts',
             join='inner', #join='exact', # TODO: go back to exact
             chunks={"valid_time": "auto", "latitude": "auto", "longitude": "auto"})
-        
-        pl_data = pl_data.sel(valid_time = slice("2020-01-01", None)) # TODO: remove this subset (only used for development)
+
+        pl_data = pl_data.sel(valid_time = slice(start_date_str, end_date_str))
         # subset the European regions extent: [-7.625 32.625 30.125 54.625]
         pl_data = pl_data.sel(latitude  = slice(60,25))
         # pl_data = xr.concat([
@@ -134,8 +155,8 @@ if __name__ == "__main__":
         verbose = True
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': computing shear', flush=True)
         # sfc_data_2['shear'] = ((pl_data.u.sel(level=500)**2 + pl_data.v.sel(level=500)**2)**0.5 - (pl_data.u.sel(level=900)**2 + pl_data.v.sel(level=900)**2)**0.5).squeeze()
-        du = pl_data.mean_u.sel(pressure_level=500) - pl_data.mean_u.sel(pressure_level=925) # TODO change to 925
-        dv = pl_data.mean_v.sel(pressure_level=500) - pl_data.mean_v.sel(pressure_level=925) # TODO change to 925
+        du = pl_data.mean_u.sel(pressure_level=500) - pl_data.mean_u.sel(pressure_level=925)
+        dv = pl_data.mean_v.sel(pressure_level=500) - pl_data.mean_v.sel(pressure_level=925)
 
         sfc_data_2={}
         sfc_data_2['shear'] = (du**2 + dv**2)**0.5                # TODO(fabian): is this the same as 3 lines prior? shear = (u5^2 + v5^2)^0.5 - (u9^2 + v9^2)^0.5 = A - B
@@ -151,7 +172,7 @@ if __name__ == "__main__":
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': writing shear dataset', flush=True)
         shear_fname = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.500_925_shear.nc')
         print(sfc_data_2_dataset, flush = True)
-        sfc_data_2_dataset.to_netcdf(shear_fname)
+        sfc_data_2_dataset.to_netcdf(shear_fname, mode='w') # mode='w' leads to overwriting
 
         #### Step 4b: compute gridpoint-wise boolean if convective
         vars_sl_regex = re.compile(r'.*\.(?:' + '|'.join(map(re.escape, all_needed_vars_single_level)) + r')\..*\.nc$')
@@ -165,9 +186,10 @@ if __name__ == "__main__":
             engine="h5netcdf", 
             parallel =True, 
             compat='no_conflicts',
-            join='inner', #join='exact', # TODO: go back to exact
+            #join='inner', #join='exact', # TODO: go back to exact
+            join='exact', # TODO: go back to exact
             chunks={"valid_time": "auto", "latitude": "auto", "longitude": "auto"})
-        sfc_data_1 = sfc_data_1.sel(valid_time = slice("2020-01-01", None)) # TODO: remove this subset (only used for development)
+        sfc_data_1 = sfc_data_1.sel(valid_time = slice(start_date_str, end_date_str)) # TODO: remove this subset (only used for development)
         # subset the European regions extent: [-7.625 32.625 30.125 54.625]
         sfc_data_1 = sfc_data_1.sel(latitude  = slice(60,25))
         # sfc_data_1 = xr.concat([
@@ -191,7 +213,7 @@ if __name__ == "__main__":
                         # cape_r = regridder(cape)
 
         conv={}
-        conv['conv_EU'] = (cape > 500) & (shear > 10) # US was: (cape > 1000) & (shear > 20)
+        conv['conv_EU'] = (cape > 500) & (shear > 10) # US was: (cape > 1000) & (shear > 20) # cape [], shear [m/s]
         for key, da in conv.items():
             da.name = key
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': converting array to xarray dataset', flush=True)
@@ -200,7 +222,7 @@ if __name__ == "__main__":
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': writing conv dataset', flush=True)
         conv_fname = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.conv.nc')
         print(conv_dataset, flush = True)
-        conv_dataset.to_netcdf(conv_fname)
+        conv_dataset.to_netcdf(conv_fname, mode='w') # mode='w' leads to overwriting
 
 
         #### Steb 5c: analyse spatial coherence (blops) to define SCE
@@ -262,7 +284,7 @@ if __name__ == "__main__":
                 a1+=1
 
                 tracked_properties = pd.concat([tracked_properties,t_p])
-            if (t%100==0 and t>0) or range(maxtime): # intermediate save i.e save every 100 time steps of the growing DataFrame into (*.csv and *.nc)
+            if (t%100==0 and t>0) or (t == maxtime-1): # intermediate save i.e save every 100 time steps of the growing DataFrame into (*.csv and *.nc)
                 toc = timeit.default_timer()
                 print('Timestep '+str(t)+' out of '+str(maxtime)+', duration '+str((toc-tic)/60)+' min', flush=True)
                 tracked_properties.to_csv(SCE_OBJ_fname_csv.replace("tttt",str(t))) # time step specific fname
@@ -275,7 +297,8 @@ if __name__ == "__main__":
                 # tracked_regions_xr = copy.deepcopy(conv[t-100:t,:,:])
                 # tracked_regions_xr.data = conv_obj[t-100:t,:,:]
                 print(tracked_regions_xr, flush = True)
-                tracked_regions_xr.to_netcdf(SCE_OBJ_fname_nc.replace("tttt",str(t))) # time step specific fname
+                tracked_regions_xr.to_netcdf(SCE_OBJ_fname_nc.replace("tttt",str(t)), mode='w') # time step specific fname mode='w' leads to overwriting
+
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': saving final data', flush=True)
         # tracked_properties.to_csv(scr_data+str(t)+'conv_obj.csv')
 
@@ -288,7 +311,7 @@ if __name__ == "__main__":
         # MERGE DATA
         print('merging data', flush=True)
         
-        files = sorted(glob(SCE_OBJ_fname_csv.replace("tttt",'*')))
+        files = sorted(glob(SCE_OBJ_fname_csv.replace("tttt",'[0-9]*')))
         #pprint.pp(files)
         a1=0
         for file in files:
@@ -310,7 +333,7 @@ if __name__ == "__main__":
         #pprint.pp(files)
         data = xr.open_mfdataset(files).rename_vars({'__xarray_dataarray_variable__':'SCE_ID'})
         print(data, flush = True)
-        data.to_netcdf(SCE_OBJ_fname_nc.replace("tttt","all-steps"))
+        data.to_netcdf(SCE_OBJ_fname_nc.replace("tttt","all-steps"), mode='w') # mode='w' leads to overwriting
 
         # plt.figure()
         # data.sel(longitude = slice(0,30), latitude = slice(65,25)).isel(valid_time=181)
