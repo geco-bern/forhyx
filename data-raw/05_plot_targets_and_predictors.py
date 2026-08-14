@@ -30,10 +30,25 @@ if __name__ == '__main__':
     input_dir = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/'
 
     ### Step 1: Open predictors
-    era5land_predictor_files = glob.glob(input_dir+'/FORHYX.predictors.era5land*')
+    era5land_predictor_files = sorted(glob.glob(input_dir+'/FORHYX.predictors.era5land.*.2016-2025.nc')) # TODO: update years
+    era5land_predictor_files = [value for index,value in enumerate(era5land_predictor_files) 
+                                if 'snowc' not in value]
+    # TODO: find out why snowc had different longitudes (and also valid_time) than the other predictors, and how to fix it
     # pprint.pp(era5land_predictor_files)
+    # Note ensure same time coordinates across all predictor files, otherwise reindex to common time coordinate
+    expected_valid_time = pd.DatetimeIndex(np.concatenate([
+        pd.date_range(f'{year}-01-01', periods=52, freq='7D').values
+        for year in range(2016, 2026)
+    ]))
+    def select_common_valid_time(ds):
+        return ds.reindex(
+            valid_time=expected_valid_time,
+            method='nearest',
+            tolerance=pd.Timedelta('3D'))
+
     ds_predictors_era5land = xr.open_mfdataset(
         era5land_predictor_files,
+        preprocess=select_common_valid_time,
         combine='by_coords',
         compat='no_conflicts',
         join='exact',
@@ -41,14 +56,19 @@ if __name__ == '__main__':
         chunks="auto", parallel =True
     )
 
-    # TODO: ensure the dates are the same!
-    era5_predictor_files = glob.glob(input_dir+'/FORHYX.predictors.era5p*') + glob.glob(input_dir+'/FORHYX.predictors.era5s*')
+    era5_predictor_files = glob.glob(input_dir+'/FORHYX.predictors.era5p*.2004-2025.nc' # TODO: update years
+        ) + glob.glob(input_dir+'/FORHYX.predictors.era5s*.2010-2025.nc')               # TODO: update years
+    # pprint.pp(era5_predictor_files)
+    #[xr.open_mfdataset(f) for f in era5_predictor_files]
+    #[xr.open_mfdataset(f) for f in glob.glob(input_dir+'/FORHYX.predictors.era5p*.2004-2025.nc*')]
+    #[xr.open_mfdataset(f) for f in glob.glob(input_dir+'/FORHYX.predictors.era5s*.2010-2025.nc*')]
+    
     ds_predictors_era5 = xr.open_mfdataset( 
-        era5_predictor_files[1],
+        era5_predictor_files,
+        preprocess=select_common_valid_time,
         combine='by_coords',
         compat='no_conflicts',
-        # join='exact',
-        join='outer', # TODO: currently outer needed because of different dates due to 7-day average with different starting date
+        join='exact',
         chunks="auto", parallel =True
     )
     # TODO: ensure coordinates are the same:
@@ -73,20 +93,21 @@ if __name__ == '__main__':
 
 
     # TODO: issue with mean_swvl1,min_t2m: fig = plt.figure()
-    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors["mean_swvl1"].sel(valid_time=date_to_plot, method='nearest').plot() # TODO: issue with mean_swvl1 and min_t2m
-    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors["min_t2m"].sel(valid_time=date_to_plot, method='nearest').plot() # TODO: issue with mean_swvl1 and min_t2m
-    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors["mean_d2m"].sel(valid_time=date_to_plot, method='nearest').plot()
-    # TODO: issue with mean_swvl1,min_t2m: # ds_predictors["mean_swvl1"].isel(valid_time=1).values # TODO: issue with mean_swvl1 and min_t2m: only nan!
-    # TODO: issue with mean_swvl1,min_t2m: # ds_predictors["min_t2m"].isel(valid_time=1).plot() # works
-    # TODO: issue with mean_swvl1,min_t2m: ds_predictors["min_t2m"].isel(valid_time=126).plot() # works
+    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors_era5land["mean_swvl1"].sel(valid_time=date_to_plot, method='nearest').plot() # TODO: issue with mean_swvl1 and min_t2m
+    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors_era5land["min_t2m"].sel(valid_time=date_to_plot, method='nearest').plot() # TODO: issue with mean_swvl1 and min_t2m
+    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors_era5land["mean_d2m"].sel(valid_time=date_to_plot, method='nearest').plot()
+    # TODO: issue with mean_swvl1,min_t2m: # ds_predictors_era5land["mean_swvl1"].isel(valid_time=1).values # TODO: issue with mean_swvl1 and min_t2m: only nan!
+    # TODO: issue with mean_swvl1,min_t2m: # ds_predictors_era5land["min_t2m"].isel(valid_time=1).plot() # works
+    # TODO: issue with mean_swvl1,min_t2m: ds_predictors_era5land["min_t2m"].isel(valid_time=126).plot() # works
     # TODO: issue with mean_swvl1,min_t2m: fig.savefig('test.png', dpi=150, bbox_inches='tight')
 
 
     # select nearest time in the xarray dataset
-    sel_time = ds_predictors.valid_time.sel(valid_time=date_to_plot, method='nearest')
+    # sel_time_era5     = ds_predictors_era5.valid_time.sel(valid_time=date_to_plot, method='nearest')
+    # sel_time_era5land = ds_predictors_era5land.valid_time.sel(valid_time=date_to_plot, method='nearest')
 
     # pick predictor variables to map (first 3 variables if available)
-    vars_to_map = list(ds_predictors.data_vars)
+    vars_to_map = list(ds_predictors_era5land.data_vars) + list(ds_predictors_era5.data_vars)
 
     n_maps = len(vars_to_map)
     ncols_maps = 3
@@ -96,7 +117,7 @@ if __name__ == '__main__':
     gs = gridspec.GridSpec(
         nrows_maps+2, ncols_maps, 
         height_ratios=[7.5 for it in range(nrows_maps)] + [2.5, 2.5], hspace=0.3)
-    
+
     # i) top row: maps
     for i, var in enumerate(vars_to_map):
         # use Cartopy PlateCarree projection to preserve lon/lat aspect
@@ -104,7 +125,10 @@ if __name__ == '__main__':
         ax = fig.add_subplot(gs[*ax_pos], projection=ccrs.PlateCarree())
         try:
             # select by time coordinate
-            da = ds_predictors[var].sel(valid_time=date_to_plot, method='nearest')
+            if var == "mean_sst" or var == "mean_siconc":
+                da = ds_predictors_era5[var].sel(valid_time=date_to_plot, method='nearest')
+            else:
+                da = ds_predictors_era5land[var].sel(valid_time=date_to_plot, method='nearest')
             # use pcolormesh for correct georeferenced plotting and no aspect distortion
             pcm = da.plot.pcolormesh(ax=ax, transform=ccrs.PlateCarree(), cmap='viridis', add_colorbar=False)
             ax.coastlines(resolution='50m')
@@ -118,8 +142,8 @@ if __name__ == '__main__':
             ax.set_title(f"{var} — {pd.to_datetime(date_to_plot).date()}")
             ax.set_xlabel(None); ax.set_ylabel(None)
             # add horizontal colorbar beneath this axis
-            # cbar_label = "%s [%s]" % (ds_predictors[var].attrs["long_name"], ds_predictors[var].attrs["units"])
-            cbar_label = "[" + ds_predictors[var].attrs["units"] + "]"
+            # cbar_label = "%s [%s]" % (da.attrs["long_name"], da.attrs["units"])
+            cbar_label = "[" + da.attrs["units"] + "]"
             cbar = fig.colorbar(pcm, ax=ax, label = cbar_label, orientation='horizontal', pad=0.06, fraction=0.05)
         except Exception as e:
             ax.text(0.5, 0.5, f'Error plotting {var}: {e}', ha='center')
