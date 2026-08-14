@@ -55,6 +55,8 @@ if __name__ == "__main__":
     # TODO: remove input_path =    '/storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_UTCDaily'
     # TODO: remove out_directory = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/'
     # TODO: remove dataset_type =  'era5-land'
+    # TODO: remove start_year_requested =  2016
+    # TODO: remove end_year_requested =  2017
     
     input_path = args.input_path     # input_path =    '/storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily'
     out_directory = args.out_path    # out_directory = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/'
@@ -62,6 +64,12 @@ if __name__ == "__main__":
 
     start_year_requested = args.start_year
     end_year_requested = args.end_year
+
+    print('input_path: ', input_path, flush=True)
+    print('out_directory: ', out_directory, flush=True)
+    print('dataset_type: ', dataset_type, flush=True)
+    print('start_year_requested: ', start_year_requested, flush=True)
+    print('end_year_requested: ', end_year_requested, flush=True)
 
     # FOR INTERACTIVE SCRIPTING: cluster = LocalCluster(n_workers=min(64, int(os.environ['SLURM_NPROCS'])), threads_per_worker=1)
     # FOR INTERACTIVE SCRIPTING: client = Client(address=cluster)
@@ -92,6 +100,7 @@ if __name__ == "__main__":
             "mean_snowc":  "FORHYX.predictors.era5land",
         }
 
+        print(f"\nLoop over variables {vars}: ########################", flush=True)
         for curr_var in vars: # curr_var = vars[0]
             print(f"\n\nStart with variable {curr_var}: ########################", flush=True)
 
@@ -135,62 +144,86 @@ if __name__ == "__main__":
 
             ### Step 5: Aggregate in time (weekly) and in space (1 deg resolution)
 
-            # 1. Aggregate into fixed 1-degree cells instead of coarsening from
-            # source coordinates. This gives identical output coordinates for
-            # both 0.25-degree ERA5 and 0.1-degree ERA5-Land inputs.
-            longitude_edges = np.arange(0.0, 361.0, 1.0)
-            longitude_centers = longitude_edges[:-1] + 0.5
-            latitude_edges = np.arange(-90.0, 91.0, 1.0)
-            latitude_centers = latitude_edges[:-1] + 0.5
+            # 1. Aggregate the aligned 0.25-degree ERA5 and 0.1-degree
+            # ERA5-Land grids into common, fixed 1-degree cells. Coarsening
+            # retains useful Dask chunks, unlike groupby_bins(), which creates
+            # one chunk for every output cell.
+            target_resolution = 1.0
+            longitude_resolution = float(
+                np.abs(ds_daily.longitude.values[1] - ds_daily.longitude.values[0])
+            )
+            latitude_resolution = float(
+                np.abs(ds_daily.latitude.values[1] - ds_daily.latitude.values[0])
+            )
+            longitude_factor = int(round(target_resolution / longitude_resolution))
+            latitude_factor = int(round(target_resolution / latitude_resolution))
+
+            if not (
+                np.isclose(longitude_factor * longitude_resolution, target_resolution)
+                and np.isclose(latitude_factor * latitude_resolution, target_resolution)
+            ):
+                raise ValueError(
+                    "The source grid resolution must divide evenly into the "
+                    f"{target_resolution}-degree target grid; got "
+                    f"{latitude_resolution} x {longitude_resolution} degrees."
+                )
 
             # Treat 360 degrees as a duplicate of 0 degrees if it is present.
             ds_daily = ds_daily.where(ds_daily.longitude < 360.0, drop=True)
-            ds_by_longitude = (
-                ds_daily
-                .groupby_bins(
-                    "longitude",
-                    longitude_edges,
-                    labels=longitude_centers,
-                    right=False,
+            expected_longitudes = 360 * longitude_factor
+            expected_latitudes = 180 * latitude_factor + 1
+            if not (
+                np.isclose(ds_daily.longitude.values[0], 0.0)
+                and np.isclose(ds_daily.latitude.values[0], 90.0)
+                and ds_daily.sizes["longitude"] == expected_longitudes
+                and ds_daily.sizes["latitude"] == expected_latitudes
+            ):
+                raise ValueError(
+                    "The source grid is not aligned with the fixed 1-degree "
+                    "cells (expected longitude to start at 0 degrees and "
+                    "descending latitude to start at 90 degrees)."
                 )
-                .mean()
-                .rename({"longitude_bins": "longitude"})
-            )
 
             # Grid-cell area is proportional to cos(latitude). Calculate the
             # weighted mean as separate numerator and denominator datasets so
             # missing values receive no weight on a variable-by-variable basis.
+            # Float32 weights keep float32 inputs from being promoted to float64.
             latitude_weights = xr.DataArray(
-                np.cos(np.deg2rad(ds_by_longitude.latitude)),
-                coords={"latitude": ds_by_longitude.latitude},
+                np.cos(np.deg2rad(ds_daily.latitude.values)).astype(np.float32),
+                coords={"latitude": ds_daily.latitude},
                 dims=("latitude",),
                 name="latitude_weights",
             )
+            coarsen_kwargs = {
+                "latitude": latitude_factor,
+                "longitude": longitude_factor,
+                "boundary": "trim",
+            }
             weighted_sum = (
-                (ds_by_longitude * latitude_weights)
-                .groupby_bins(
-                    "latitude",
-                    latitude_edges,
-                    labels=latitude_centers,
-                    right=True,
-                )
+                (ds_daily * latitude_weights)
+                .coarsen(**coarsen_kwargs)
                 .sum(skipna=True)
             )
             weight_sum = (
-                (ds_by_longitude.notnull() * latitude_weights)
-                .groupby_bins(
-                    "latitude",
-                    latitude_edges,
-                    labels=latitude_centers,
-                    right=True,
-                )
+                (ds_daily.notnull() * latitude_weights)
+                .coarsen(**coarsen_kwargs)
                 .sum(skipna=True)
             )
-            ds_coarse = (
-                (weighted_sum / weight_sum)
-                .rename({"latitude_bins": "latitude"})
-                .sortby("latitude", ascending=False)
+            # Empty source cells have zero total weight. Mask their denominator
+            # before division so they remain NaN without evaluating 0 / 0.
+            valid_weight_sum = weight_sum.where(weight_sum > 0)
+            ds_coarse = weighted_sum / valid_weight_sum
+
+            # coarsen() derives coordinates from the source point locations;
+            # assign the geometric centers of the fixed cells explicitly.
+            longitude_attrs = ds_daily.longitude.attrs.copy()
+            latitude_attrs = ds_daily.latitude.attrs.copy()
+            ds_coarse = ds_coarse.assign_coords(
+                longitude=np.arange(0.5, 360.0, target_resolution),
+                latitude=np.arange(89.5, -90.0, -target_resolution),
             )
+            ds_coarse.longitude.attrs = longitude_attrs
+            ds_coarse.latitude.attrs = latitude_attrs
 
             # 2. Build 52 calendar-anchored weekly means for each year.  Each
             # year contains Jan 1--Dec 30 (364 days); remaining year-end days
