@@ -92,6 +92,7 @@ cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/02_aggregate_predictors.sh
 python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14
 python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
 cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/03_compute_targets.sh
+# This took about 15h for 25 years (see slurm-03_FORHYX_compute_SCE_12468414.out). Currently running for 50 years (1974-2025): slurm-03_FORHYX_compute_SCE_1974-2025_15868439.out
 
 # ii) PCWD see separate repository geco-bern/cwd_global
 
