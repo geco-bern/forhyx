@@ -82,8 +82,9 @@ if __name__ == "__main__":
         ### Step 2: Loop over different predictor variables
         if dataset_type == 'era5':
             vars = ['500.mean_z', 'mean_sst', 'mean_siconc'] # era5
+            vars = ['mean_sst', 'mean_siconc'] # era5 # TODO: remove again
         elif dataset_type == 'era5-land':
-            vars = ['mean_snowc', 'max_t2m', 'min_t2m', 'mean_t2m', 'mean_d2m', 'mean_swvl1']
+            vars = ['mean_snowc', 'max_t2m', 'min_t2m', 'mean_t2m', 'mean_swvl1', 'mean_d2m'] # era5-land
 
         fname_prefix_map = {
             # era5-pressure:

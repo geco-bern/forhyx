@@ -5,7 +5,7 @@ This repository contains the code for the FORHYX project.
 ## Use
 
 ### Data preparation
-Data preparation was done by running:
+Data preparation was done by running the following:
 
     - `data-raw/01_download_scalar_indices.py`.
     - `data-raw/02_aggregate_predictors.py`.
@@ -38,6 +38,7 @@ Result in output directory `/storage/capacity/occr_geco/data_2/scratch/fbernhard
     - `FORHYX.predictors.era5single.mean_sst.2010-2025.nc`
 
 Temporary data is stored into `/storage/scratch/giub_geco/fbernhard/FORHYX/`
+For further details refer to `data-raw/README.md`.
 
 ### Data analysis
 To run the ML analysis workflow run python scripts located in `data/` subdirectory. Namely:

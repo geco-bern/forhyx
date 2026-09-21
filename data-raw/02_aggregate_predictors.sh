@@ -1,6 +1,6 @@
 #! /usr/bin/bash -l
 #SBATCH --job-name="02_FORHYX_aggregate_predictors"
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 
 #SBATCH --account=invest          ### invest           ### FOR DEVELOPMENT: gratis
 #SBATCH --qos=job_icpu-stocker    ### job_icpu-stocker ### FOR DEVELOPMENT: job_debug (AND ensure not to use capacity storage!)
@@ -21,6 +21,7 @@ echo "Hostname: $(hostname)"
 
 echo "SLURM Job ID: ${SLURM_JOBID}"
 
+module purge
 module load cURL/8.11.1-GCCcore-14.2.0 OpenSSL/3  # on UBELIX HPC
 module load Anaconda3                             # on UBELIX HPC
 eval "$(conda shell.bash hook)"                   # on UBELIX HPC
@@ -37,13 +38,13 @@ conda activate forhyx
 python3 02_aggregate_predictors.py --dataset-type era5 \
     --input-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily \
     --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/ \
-    --start-year 2004 \
+    --start-year 1974 \
     --end-year 2025
 
 python3 02_aggregate_predictors.py --dataset-type era5-land \
     --input-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_UTCDaily \
     --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/ \
-    --start-year 1994 \
+    --start-year 1962 \
     --end-year 2025
 
 conda deactivate
@@ -67,16 +68,16 @@ echo "Finished on: $(date --rfc-3339=seconds)"
 # Check current download and aggregation inventory (if files missing, run the corrsponding download slurm scripts)
 # # ERA5-Land:
 # python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/
-# ### NOTE: for predictors: For 2020-2026 with 't2m', 'd2m', 'swvl1', 'snowc':  nothing missing
+# ### NOTE: for predictors: For 1962-2026 with 't2m', 'd2m', 'swvl1', 'snowc':  nothing missing
 # ### NOTE: for targets:    For 2020-2026 with 'ssr','str','tp','sp','t2m'   :  nothing missing (have all of this from earlier download)
 # python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_UTCDaily
-# ### NOTE: for predictors: For 2016-2025 with 'mean_t2m', 'mean_d2m', 'mean_swvl1', 'mean_snowc':  nothing missing
+# ### NOTE: for predictors: For 1962-2025 with 'mean_t2m', 'mean_d2m', 'mean_swvl1', 'mean_snowc':  nothing missing
 # ### ### NOTE: for targets:    For 2024-2026 with 'tot_ssr','tot_str','tot_tp','mean_sp','mean_t2m' :  all of 'tot_ssr','tot_str','tot_tp','mean_sp' missing
 
 # # ERA5:
 # python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14
-# ### NOTE: for predictors: For 2008-2025 with z.500, sst, siconc: nothing missing
-# ### NOTE: for targets:    For 2008-2026 with cape, cp, 500.u,500.v,925.u,925.v: cape.2026.01-07, cp.2026.06-07
+# ### NOTE: for predictors: For 1960-2026 with z.500, sst, siconc: nothing missing
+# ### NOTE: for targets:    For 1960-2026 with cape, cp, 500.u,500.v,925.u,925.v: except for u.v: missing Sep 1973
 # python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
 # cd /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
 # rsync -avz --include="*/" --include="*era5-pressure-levels_UTCDaily.500.mean_z*" --exclude="*" /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/ /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily

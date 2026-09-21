@@ -50,17 +50,6 @@ out_directory = '/storage/scratch/giub_geco/fbernhard/FORHYX/'
 # rm -r /storage/scratch/giub_geco/fbernhard/FORHYX/03*
 
 
-
-# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14 # TODO: 
-# ### NOTE: for predictors: For 2008-2025 with z.500, sst, siconc: nothing missing
-# ### NOTE: for targets:    For 2008-2026 with cape, cp, 500.u,500.v,925.u,925.v: cape.2026.01-07, cp.2026.06-07
-# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# ### NOTE: for predictors: For 2010-2025 with mean_z.500, mean_sst, mean_siconc: nothing missing
-# ### NOTE: for targets:    For 2010-2025 with max_cape, tot_cp, mean_u500,mean_v500,mean_u925,mean_v925: missing tot_cp, max_cape
-
-
-
-
 dask.config.set({
     "distributed.comm.timeouts.connect": "60s",
     "distributed.comm.timeouts.tcp": "120s",
@@ -91,8 +80,6 @@ if __name__ == "__main__":
     start_year_requested = args.start_year
     end_year_requested = args.end_year
 
-    start_date_str = '2022-01-01'
-    end_date_str   = '2022-02-03'
     start_date_str = str(start_year_requested) + "-01-01"
     end_date_str   = str(end_year_requested) + "-12-31"
     
@@ -106,6 +93,10 @@ if __name__ == "__main__":
         print(client, flush=True)
         print(client.dashboard_link, flush=True)
 
+        shear_fname = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.500_925_shear.nc')
+        conv_fname = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.conv.nc')
+        verbose = True
+        
         #all_needed_vars_pressure_level = ['500.mean_u','500.mean_v','925.mean_u','925.mean_v'] Not named like this
         all_needed_vars_pressure_level = ['500_900_925.mean_u','500_900_925.mean_v']
         all_needed_vars_single_level   = ['max_cape', 'tot_cp']
@@ -152,7 +143,6 @@ if __name__ == "__main__":
         pl_data = pl_data.sortby('longitude')
         pl_data = pl_data.sel(longitude=slice(-10, 35))  # 10°W..35°E
 
-        verbose = True
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': computing shear', flush=True)
         # sfc_data_2['shear'] = ((pl_data.u.sel(level=500)**2 + pl_data.v.sel(level=500)**2)**0.5 - (pl_data.u.sel(level=900)**2 + pl_data.v.sel(level=900)**2)**0.5).squeeze()
         du = pl_data.mean_u.sel(pressure_level=500) - pl_data.mean_u.sel(pressure_level=925)
@@ -170,7 +160,6 @@ if __name__ == "__main__":
         #sfc_data_2 = xr.Dataset(sfc_data_2,compat='override')
         sfc_data_2_dataset = xr.merge(list(sfc_data_2.values()), compat='override')
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': writing shear dataset', flush=True)
-        shear_fname = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.500_925_shear.nc')
         print(sfc_data_2_dataset, flush = True)
         sfc_data_2_dataset.to_netcdf(shear_fname, mode='w') # mode='w' leads to overwriting
 
@@ -186,8 +175,7 @@ if __name__ == "__main__":
             engine="h5netcdf", 
             parallel =True, 
             compat='no_conflicts',
-            #join='inner', #join='exact', # TODO: go back to exact
-            join='exact', # TODO: go back to exact
+            join='exact',
             chunks={"valid_time": "auto", "latitude": "auto", "longitude": "auto"})
         sfc_data_1 = sfc_data_1.sel(valid_time = slice(start_date_str, end_date_str)) # TODO: remove this subset (only used for development)
         # subset the European regions extent: [-7.625 32.625 30.125 54.625]
@@ -220,7 +208,6 @@ if __name__ == "__main__":
         #sfc_data_2 = xr.Dataset(sfc_data_2,compat='override')
         conv_dataset = xr.merge(list(conv.values()), compat='override')
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': writing conv dataset', flush=True)
-        conv_fname = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.conv.nc')
         print(conv_dataset, flush = True)
         conv_dataset.to_netcdf(conv_fname, mode='w') # mode='w' leads to overwriting
 
@@ -243,7 +230,6 @@ if __name__ == "__main__":
         SCE_OBJ_fname_nc  = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.SCE.tttt.nc')
         tracked_regions = np.zeros(conv.shape)
         tracked_properties = pd.DataFrame(columns=['time','itime','label','size','precip','ilat','ilon','lat','lon'])
-        a1=0
         for t in range(maxtime):
             tic = timeit.default_timer()
             # if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': identifying conv objects')
@@ -281,7 +267,6 @@ if __name__ == "__main__":
                 t_p['ilon']=ilon
                 t_p['lat']=lat.values
                 t_p['lon']=lon.values
-                a1+=1
 
                 tracked_properties = pd.concat([tracked_properties,t_p])
             if (t%100==0 and t>0) or (t == maxtime-1): # intermediate save i.e save every 100 time steps of the growing DataFrame into (*.csv and *.nc)
