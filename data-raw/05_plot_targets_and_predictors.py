@@ -16,21 +16,19 @@ import glob
 
 if __name__ == '__main__':
 
-    # predictors: '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.max_t2m.2016-2025.nc'
-    # predictors: '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.mean_d2m.2016-2025.nc'
-    # predictors: '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.mean_t2m.2016-2025.nc'
-    # predictors: '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.min_t2m.2016-2025.nc'
-    # predictors: TODO: era5-land: snowc
-    # predictors: TODO: era5: 500.z
-    # predictors: TODO: era5: si, sst
-
-    # targets: '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.targets.pcwd_regional_weekly.csv'
-    # targets: '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.targets.sce_regional_weekly.csv'
-
     input_dir = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/'
 
     ### Step 1: Open predictors
+    #### ERA5-Land predictors (land surface variables)
     era5land_predictor_files = sorted(glob.glob(input_dir+'/FORHYX.predictors.era5land.*.2008-2008.nc')) # TODO: update years
+    era5land_predictor_files = [ # # TODO: update years
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.max_t2m.1994-2025.nc',
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.mean_t2m.1994-2025.nc',
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.min_t2m.1994-2025.nc',
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.mean_d2m.1994-2025.nc',
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.mean_snowc.1994-2025.nc',
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5land.mean_swvl1.1994-2025.nc'
+    ]
     ds_predictors_era5land = xr.open_mfdataset(
         era5land_predictor_files,
         combine='by_coords',
@@ -38,18 +36,44 @@ if __name__ == '__main__':
         join='exact',
         chunks="auto", parallel =True
     )
+    # small check for continuity in time (no missing weeks)
+    valid_time = pd.DatetimeIndex(ds_predictors_era5land.valid_time.values)
+    expected_time = pd.DatetimeIndex(np.concatenate([
+        pd.date_range(f'{year}-01-01', periods=52, freq='7D').values
+        for year in valid_time.year.unique()
+    ]))
+    missing_time = expected_time.difference(valid_time)
+    assert missing_time.empty, 'Missing predictor weeks:\n' + '\n'.join(map(str, missing_time))
 
+
+    #### ERA5 predictors (ocean and atmosphere variables)
     era5_predictor_files = glob.glob(input_dir+'/FORHYX.predictors.era5p*.2009-2009.nc' # TODO: update years
         ) + glob.glob(input_dir+'/FORHYX.predictors.era5s*.2009-2009.nc')               # TODO: update years
+    era5_predictor_files = [
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5pressure.500_mean_z.2004-2025.nc',
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5single.mean_sst.1982-2025.nc',
+        '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.predictors.era5single.mean_siconc.1982-2025.nc']
+    # pprint.pp(era5_predictor_files)
     ds_predictors_era5 = xr.open_mfdataset( 
         era5_predictor_files,
         combine='by_coords',
         compat='no_conflicts',
-        join='exact',
+        join='inner', # join='exact', # TODO: the inner here homogenizes the time extent
         chunks="auto", parallel =True
     )
+    # small check for continuity in time (no missing weeks)
+    valid_time = pd.DatetimeIndex(ds_predictors_era5.valid_time.values)
+    expected_time = pd.DatetimeIndex(np.concatenate([
+        pd.date_range(f'{year}-01-01', periods=52, freq='7D').values
+        for year in valid_time.year.unique()
+    ]))
+    missing_time = expected_time.difference(valid_time)
+    assert missing_time.empty, 'Missing predictor weeks:\n' + '\n'.join(map(str, missing_time))
+
+    
     # TODO: ensure coordinates are the same:
     # TODO: xr.concat([ds_predictors_era5, ds_predictors_era5land])
+
 
     # Read the monthly Jones/CRU NAO scalar predictor.
     nao_csv_path = os.path.join(
@@ -60,35 +84,48 @@ if __name__ == '__main__':
     ).sort_index()
 
     ### Step 2: Read targets
-    csv_path_sce  = input_dir+'FORHYX.targets.sce_regional_weekly.csv'
-    csv_path_pcwd = input_dir+'FORHYX.targets.pcwd_regional_weekly.csv'
+    
+    #csv_path_sce  = input_dir+'FORHYX.targets.sce_regional_weekly.2016-2025.csv'
+    #csv_path_pcwd = input_dir+'FORHYX.targets.pcwd_regional_weekly.1954-2024.csv'
+    # csv_path_sce  = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.targets.sce_regional_weekly.2016-2025.csv'
+    # csv_path_pcwd = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.targets.pcwd_regional_weekly.2003-2024.csv'
+    csv_path_sce  = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.targets.sce_regional_weekly.2003-2025.csv'
+    csv_path_pcwd = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/FORHYX.targets.pcwd_regional_weekly.1954-2026.csv'
 
     # Read CSV as a time-indexed DataFrame
     df_sce  = pd.read_csv(csv_path_sce, parse_dates=['time'], index_col='time')
     df_pcwd = pd.read_csv(csv_path_pcwd, parse_dates=['time'], index_col='time')
 
+    # small check for continuity in time (no missing weeks)
+    available_time = pd.DatetimeIndex(df_sce.index)
+    #pprint.pp(available_time[310:416]) # TODO:
+    expected_time = pd.DatetimeIndex(np.concatenate([
+        pd.date_range(f'{year}-01-01', periods=52, freq='7D').values
+        for year in available_time.year.unique()
+    ]))
+    missing_time = expected_time.difference(available_time)
+    assert missing_time.empty, 'Missing target weeks (SCE):\n' + '\n'.join(map(str, missing_time))
+
+    available_time = pd.DatetimeIndex(df_pcwd.index)
+    pprint.pp(available_time[3600:3706]) # TODO:
+    expected_time = pd.DatetimeIndex(np.concatenate([
+        pd.date_range(f'{year}-01-01', periods=52, freq='7D').values
+        for year in available_time.year.unique()
+    ]))
+    missing_time = expected_time.difference(available_time)
+    assert missing_time.empty, 'Missing target weeks (PCWD):\n' + '\n'.join(map(str, missing_time))
+
+
+    
     ### Step 3: Create and save plot
     #### Step 3a: plot maps for a chosen date and show that date on CSV time series
     
-    date_to_plot = pd.to_datetime('2022-07-01') # choose a date to visualise
+    date_to_plot = pd.to_datetime('2022-07-15') # choose a date to visualise
 
-    # Crop the NAO index to the same time extent
+    # crop the NAO index to the same time extent
     plot_start = min(df_sce.index.min(), df_pcwd.index.min())
     plot_end = max(df_sce.index.max(), df_pcwd.index.max())
     df_nao_plot = df_nao.loc[plot_start:plot_end]
-
-
-
-
-    # TODO: issue with mean_swvl1,min_t2m: fig = plt.figure()
-    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors_era5land["mean_swvl1"].sel(valid_time=date_to_plot, method='nearest').plot() # TODO: issue with mean_swvl1 and min_t2m
-    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors_era5land["min_t2m"].sel(valid_time=date_to_plot, method='nearest').plot() # TODO: issue with mean_swvl1 and min_t2m
-    # TODO: issue with mean_swvl1,min_t2m: #ds_predictors_era5land["mean_d2m"].sel(valid_time=date_to_plot, method='nearest').plot()
-    # TODO: issue with mean_swvl1,min_t2m: # ds_predictors_era5land["mean_swvl1"].isel(valid_time=1).values # TODO: issue with mean_swvl1 and min_t2m: only nan!
-    # TODO: issue with mean_swvl1,min_t2m: # ds_predictors_era5land["min_t2m"].isel(valid_time=1).plot() # works
-    # TODO: issue with mean_swvl1,min_t2m: ds_predictors_era5land["min_t2m"].isel(valid_time=126).plot() # works
-    # TODO: issue with mean_swvl1,min_t2m: fig.savefig('test.png', dpi=150, bbox_inches='tight')
-
 
     # select nearest time in the xarray dataset
     # sel_time_era5     = ds_predictors_era5.valid_time.sel(valid_time=date_to_plot, method='nearest')
@@ -108,7 +145,7 @@ if __name__ == '__main__':
         height_ratios=(
             [7.5 for it in range(nrows_maps)] + [2.5, 2.5, 2.5]
         ),
-        hspace=0.3,
+        hspace=0.55,
     )
 
     # i) map rows
@@ -118,7 +155,7 @@ if __name__ == '__main__':
         ax = fig.add_subplot(gs[*ax_pos], projection=ccrs.PlateCarree())
         try:
             # select by time coordinate
-            if var == "mean_sst" or var == "mean_siconc":
+            if var == "mean_sst" or var == "mean_siconc" or var == "500_mean_z":
                 da = ds_predictors_era5[var].sel(valid_time=date_to_plot, method='nearest')
             else:
                 da = ds_predictors_era5land[var].sel(valid_time=date_to_plot, method='nearest')
@@ -155,6 +192,7 @@ if __name__ == '__main__':
 
     # plot specified regions from CSV with discrete colors
     region_cols = ['region_10'] # use df_sce.columns.tolist() for all regions
+    region_cols = ['region_10', 'region_8'] # use df_sce.columns.tolist() for all regions
     colors = plt.get_cmap('tab20')(np.linspace(0, 1, max(1, len(region_cols))))
 
     for i, col in enumerate(region_cols):
@@ -178,8 +216,8 @@ if __name__ == '__main__':
     ax_ts_nao.grid(alpha=0.3)
     ax_ts_sce.grid( alpha=0.3)
     ax_ts_pcwd.grid(alpha=0.3)
-    ax_ts_nao.legend(ncol=2, loc='upper left', bbox_to_anchor=(0.02, 0.98))
-    ax_ts_sce.legend( title='region', ncol=1, loc='upper left', bbox_to_anchor=(0.02, 0.98))
+    # ax_ts_nao.legend(ncol=1, loc='upper left', bbox_to_anchor=(0.02, 0.98))
+    ax_ts_sce.legend(ncol=1, loc='upper left', bbox_to_anchor=(0.02, 0.98))
 
     #fig.tight_layout()
     fig.savefig('maps_and_timeseries_date_to_plot.png', dpi=150, bbox_inches='tight')

@@ -24,6 +24,7 @@ dask.config.set({
 pcwd_input_path = '/storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_03_daily_pcwd.narm_v2-doy-reset_netcdf'
 sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc'
 #sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/daily-03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc' # backup rename
+regions = gpd.read_file('/storage/homefs/fb24k097/GitHub/fabern/forhyx/data/regions/shapefile/regions.shp')
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -49,6 +50,10 @@ def list_netcdf_files(root_dir, pattern):
 if __name__ == '__main__':
     args = parse_args();
 
+    # out_directory = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX'
+    # start_year_requested = 1954
+    # start_year_requested = 2003
+    # end_year_requested = 2025
     out_directory = args.out_path
     # os.makedirs(out_directory, exist_ok=True)
 
@@ -67,6 +72,8 @@ if __name__ == '__main__':
 
         ### Step 2: Loop over different target variables
         vars = ['pcwd', 'sce']
+        vars = ['pcwd'] # only aggregate pcwd
+        #vars = ['sce']   # only aggregate sce
         #curr_var = vars[0]
         #curr_var = vars[1]
         for curr_var in vars:
@@ -132,8 +139,6 @@ if __name__ == '__main__':
             print(ds_daily, flush=True)
 
             ### Step 5: Aggregate in time (weekly) and in space (to regions)
-            regions = gpd.read_file('/storage/homefs/fb24k097/GitHub/fabern/forhyx/data/regions/shapefile/regions.shp')
-            
             # ensure there is a human-readable name column if you want one
             if 'region_name' not in regions.columns:
                 regions['region_name'] = regions['region_id'].astype(str)
@@ -186,9 +191,37 @@ if __name__ == '__main__':
                 .mean(dim=('lat', 'lon'), skipna=True)
             )
 
-            # 2. Resample temporally using built-in Dask-optimized resample
-            # Compute mean per week
-            regional_weekly = regional_daily.resample(time='7D').mean()
+            ## old, unused approach: # 2. Resample temporally using built-in Dask-optimized resample
+            ## old, unused approach: # Compute mean per week
+            ## old, unused approach: regional_weekly = regional_daily.resample(time='7D').mean()
+            # 2. Build 52 calendar-anchored weekly means for each year, using
+            # the same temporal aggregation as the predictor aggregation.
+            # Each year starts on Jan 1 and contains 52 complete seven-day
+            # periods; remaining year-end days are intentionally excluded.
+            regional_daily = regional_daily.assign_coords(
+                time=regional_daily.time.dt.floor('D')
+            ).sortby('time')
+            years = np.unique(regional_daily.time.dt.year.values)
+            if start_year_requested is not None:
+                years = years[years >= start_year_requested]
+            if end_year_requested is not None:
+                years = years[years <= end_year_requested]
+            if years.size == 0:
+                raise ValueError(
+                    'No target data falls within the requested year range.'
+                )
+            weekly_by_year = []
+            weekly_frequency = pd.Timedelta(days=7)
+            for year in years:
+                year_start = pd.Timestamp(year=int(year), month=1, day=1)
+                daily_index = pd.date_range(year_start, periods=52 * 7, freq='D')
+                weekly_by_year.append(
+                    regional_daily
+                    .reindex(time=daily_index)
+                    .resample(time=weekly_frequency, origin=year_start)
+                    .mean()
+                )
+            regional_weekly = xr.concat(weekly_by_year, dim='time')
 
             # 3. Output as CSV:
             if curr_var == 'pcwd':
