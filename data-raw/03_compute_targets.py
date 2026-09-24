@@ -236,7 +236,9 @@ if __name__ == "__main__":
             conv_obj = skimage.measure.label(conv.isel(valid_time=t).values) # uses skimage.measure.label()
             maxlabel = np.nanmax(conv_obj)
             
-            for lab in range(maxlabel):
+            for lab in range(1,maxlabel+1): # NOTE: changed from range(maxlabel) to range(1,maxlabel+1) to avoid label=0 (background) and include maxlabel
+                                            #       it seems that for label 0 this was anyway not countes as binary*lab was still 0
+                                            #       however, the last blobl (label==maxlabel) was not counted as range(maxlabel) does not include maxlabel
                 t_p = pd.DataFrame(columns=['time','itime','label','size','precip','ilat','ilon','lat','lon'],data=np.zeros([1,9]))
                 binary = (conv_obj==lab)
                 size = np.nansum(binary)
