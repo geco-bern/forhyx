@@ -299,6 +299,15 @@ if __name__ == "__main__":
         print('merging data', flush=True)
         
         files = sorted(glob(SCE_OBJ_fname_csv.replace("tttt",'[0-9]*')))
+        # correctly order files, to retrieve ordered CSV. Previously they were ordered as:
+            # 03_era5-pressure-levels_UTCDaily.SCE.9000.nc
+            # 03_era5-pressure-levels_UTCDaily.SCE.900.csv
+            # 03_era5-pressure-levels_UTCDaily.SCE.900.nc
+            # 03_era5-pressure-levels_UTCDaily.SCE.9100.csv
+            # 03_era5-pressure-levels_UTCDaily.SCE.9100.nc
+        def chunk_number(path):
+            return int(re.search(r"\.SCE\.(\d+)\.(?:csv|nc)$", path).group(1))
+        files = sorted(files, key=chunk_number)
         #pprint.pp(files)
         a1=0
         for file in files:
@@ -314,11 +323,18 @@ if __name__ == "__main__":
         tracked_properties = tracked_properties.drop(columns='Unnamed: 0')
 
         print(tracked_properties.shape, flush=True)
-        tracked_properties.to_csv(SCE_OBJ_fname_csv.replace("tttt","all-steps")) # sotre final
+        tracked_properties.to_csv(SCE_OBJ_fname_csv.replace("tttt","all-steps")) # store final
 
-        files = sorted(glob(SCE_OBJ_fname_nc.replace("tttt",'[0-9]*')))
+        files = glob(SCE_OBJ_fname_nc.replace("tttt",'[0-9]*'))
+        files = sorted(files, key=chunk_number)
         #pprint.pp(files)
         data = xr.open_mfdataset(files).rename_vars({'__xarray_dataarray_variable__':'SCE_ID'})
+
+        # check for non-overlapping time steps
+        if not data.indexes["valid_time"].is_monotonic_increasing:
+            raise ValueError("Output valid_time is not monotonic")
+        if data.indexes["valid_time"].has_duplicates:
+            raise ValueError("Output contains duplicate valid_time values")
         print(data, flush = True)
         data.to_netcdf(SCE_OBJ_fname_nc.replace("tttt","all-steps"), mode='w') # mode='w' leads to overwriting
 
