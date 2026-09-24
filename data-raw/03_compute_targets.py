@@ -230,6 +230,7 @@ if __name__ == "__main__":
         SCE_OBJ_fname_nc  = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.SCE.tttt.nc')
         tracked_regions = np.zeros(conv.shape)
         tracked_properties = pd.DataFrame(columns=['time','itime','label','size','precip','ilat','ilon','lat','lon'])
+        chunk_start = 0
         for t in range(maxtime):
             tic = timeit.default_timer()
             # if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': identifying conv objects')
@@ -271,19 +272,26 @@ if __name__ == "__main__":
                 t_p['lon']=lon.values
 
                 tracked_properties = pd.concat([tracked_properties,t_p])
-            if (t%100==0 and t>0) or (t == maxtime-1): # intermediate save i.e save every 100 time steps of the growing DataFrame into (*.csv and *.nc)
+            # intermediate save (flush) i.e save every 100 time steps of the growing DataFrame into (*.csv and *.nc)
+            do_flush = (t + 1) % 100 == 0 or t == maxtime - 1
+            if do_flush: 
+                chunk_stop = t + 1 # by specifying chunk stop we avoid that the maxtime chunk overlaps with second to last chunk
                 toc = timeit.default_timer()
                 print('Timestep '+str(t)+' out of '+str(maxtime)+', duration '+str((toc-tic)/60)+' min', flush=True)
                 tracked_properties.to_csv(SCE_OBJ_fname_csv.replace("tttt",str(t))) # time step specific fname
                 tracked_properties = pd.DataFrame(columns=['time','itime','label','size','precip','ilat','ilon','lat','lon'])
                 tracked_regions_xr = xr.DataArray(
-                    tracked_regions[t-100:t, :, :],  # New data
-                    coords=conv[t-100:t,:,:].coords,  # Retain the original coordinates
-                    dims=conv[t-100:t,:,:].dims  # Retain the original dimensions
+                    tracked_regions[chunk_start:chunk_stop, :, :],                      # New data
+                    coords=conv.isel(valid_time=slice(chunk_start, chunk_stop)).coords, # Retain the original coordinates
+                    dims=conv.dims,                                                     # Retain the original dimensions
+                    name="SCE_ID",
                 )
-                # tracked_regions_xr = copy.deepcopy(conv[t-100:t,:,:])
-                # tracked_regions_xr.data = conv_obj[t-100:t,:,:]
+                # tracked_regions_xr = copy.deepcopy(conv[chunk_start:chunk_stop,:,:])
+                # tracked_regions_xr.data = conv_obj[chunk_start:chunk_stop,:,:]
+                chunk_start = chunk_stop # prepare for next iteration
                 print(tracked_regions_xr, flush = True)
+                print(SCE_OBJ_fname_csv.replace("tttt",str(t)), flush=True)
+                print(SCE_OBJ_fname_nc.replace("tttt",str(t)), flush=True)
                 tracked_regions_xr.to_netcdf(SCE_OBJ_fname_nc.replace("tttt",str(t)), mode='w') # time step specific fname mode='w' leads to overwriting
 
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': saving final data', flush=True)
@@ -326,6 +334,7 @@ if __name__ == "__main__":
         tracked_properties.to_csv(SCE_OBJ_fname_csv.replace("tttt","all-steps")) # store final
 
         files = glob(SCE_OBJ_fname_nc.replace("tttt",'[0-9]*'))
+        # correctly order files
         files = sorted(files, key=chunk_number)
         #pprint.pp(files)
         data = xr.open_mfdataset(files).rename_vars({'__xarray_dataarray_variable__':'SCE_ID'})
