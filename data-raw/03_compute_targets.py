@@ -26,7 +26,6 @@ from skimage.measure import label, regionprops
 input_path    = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily'
 out_directory = '/storage/scratch/giub_geco/fbernhard/FORHYX/'
 
-# os.makedirs(out_directory, exist_ok=True)
 # ll -h /storage/scratch/giub_geco/fbernhard/FORHYX/03*
 # rm -r /storage/scratch/giub_geco/fbernhard/FORHYX/03*
 
@@ -168,7 +167,7 @@ if __name__ == "__main__":
             engine="h5netcdf", 
             parallel =True, 
             compat='no_conflicts',
-            join='exact',
+            join='inner',
             chunks={"valid_time": "auto", "latitude": "auto", "longitude": "auto"})
 
         pl_data = pl_data.sel(valid_time = slice(start_date_str, end_date_str))
@@ -201,6 +200,7 @@ if __name__ == "__main__":
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': writing shear dataset', flush=True)
         print(sfc_data_2_dataset, flush = True)
         sfc_data_2_dataset.to_netcdf(shear_fname, mode='w') # mode='w' leads to overwriting
+        pl_data.close()
 
         #### Step 4b: compute gridpoint-wise boolean if convective
         netcdf_files_on_single_level = sorted(
@@ -218,7 +218,7 @@ if __name__ == "__main__":
             compat='no_conflicts',
             join='exact',
             chunks={"valid_time": "auto", "latitude": "auto", "longitude": "auto"})
-        sfc_data_1 = sfc_data_1.sel(valid_time = slice(start_date_str, end_date_str)) # TODO: remove this subset (only used for development)
+        sfc_data_1 = sfc_data_1.sel(valid_time=slice(start_date_str, end_date_str))
         # subset the European regions extent: [-7.625 32.625 30.125 54.625]
         sfc_data_1 = sfc_data_1.sel(latitude  = slice(60,25))
         # sfc_data_1 = xr.concat([
@@ -230,115 +230,135 @@ if __name__ == "__main__":
         sfc_data_1 = sfc_data_1.sel(longitude=slice(-10, 35))  # 10°W..35°E
 
         cape = sfc_data_1.max_cape
-        shear = xr.open_mfdataset(shear_fname, combine="by_coords").shear
-                        # if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': regridding CAPE')
-                        # cape_r = skit.resize(
-                        #         cape.values,
-                        #         shear.values.shape,
-                        #         mode="reflect",  # Handles boundaries gracefully
-                        #         anti_aliasing=True,  # Smooth resizing
-                        #     )
-                        # regridder = xe.Regridder(cape, shear, method="bilinear")
-                        # cape_r = regridder(cape)
-
-        conv={}
-        conv['conv_EU'] = (cape > 500) & (shear > 10) # US was: (cape > 1000) & (shear > 20) # cape [], shear [m/s]
-        for key, da in conv.items():
-            da.name = key
-        if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': converting array to xarray dataset', flush=True)
-        #sfc_data_2 = xr.Dataset(sfc_data_2,compat='override')
-        conv_dataset = xr.merge(list(conv.values()), compat='override')
-        if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': writing conv dataset', flush=True)
-        print(conv_dataset, flush = True)
-        conv_dataset.to_netcdf(conv_fname, mode='w') # mode='w' leads to overwriting
+        with xr.open_dataset(shear_fname, engine="h5netcdf") as shear_dataset:
+            cape, shear = xr.align(cape, shear_dataset.shear, join="exact")
+            conv_dataset = xr.Dataset({
+                'conv_EU': (cape > 500) & (shear > 10)
+            }) # US was: (cape > 1000) & (shear > 20) # cape [], shear [m/s]
+            if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': writing conv dataset', flush=True)
+            print(conv_dataset, flush = True)
+            conv_dataset.to_netcdf(conv_fname, mode='w') # mode='w' leads to overwriting
 
 
-        #### Steb 5c: analyse spatial coherence (blops) to define SCE
+        #### Step 5c: analyse spatial coherence (blobs) to define SCE
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': reading data', flush=True)
         ticc = timeit.default_timer()
-        conv = xr.open_dataset(conv_fname).conv_EU
-
-        cp = sfc_data_1.tot_cp
-        # subset convective precipitation
-        #TODO: check if needed: cp_r = cp.sel(valid_time=slice(conv.valid_time[0],conv.valid_time[-1]+10**15))
-        cp_r = cp
-        cp_bin = cp_r > 0
+        conv_source = xr.open_dataset(conv_fname, engine="h5netcdf")
+        cp_r, conv = xr.align(sfc_data_1.tot_cp, conv_source.conv_EU, join="exact")
 
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': retrieving object properties', flush=True)
         maxtime=len(conv.valid_time)
+        if maxtime == 0:
+            raise ValueError(f"No timesteps found for requested years {run_tag}")
 
-        SCE_OBJ_fname_csv = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.SCE.tttt.csv')
-        SCE_OBJ_fname_nc  = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.SCE.tttt.nc')
-        tracked_regions = np.zeros(conv.shape)
-        tracked_properties = pd.DataFrame(columns=['time','itime','label','size','precip','ilat','ilon','lat','lon'])
-        chunk_start = 0
-        for t in range(maxtime):
-            tic = timeit.default_timer()
-            # if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': identifying conv objects')
-            conv_obj = skimage.measure.label(conv.isel(valid_time=t).values) # uses skimage.measure.label()
-            maxlabel = np.nanmax(conv_obj)
-            
-            for lab in range(1,maxlabel+1): # NOTE: changed from range(maxlabel) to range(1,maxlabel+1) to avoid label=0 (background) and include maxlabel
-                                            #       it seems that for label 0 this was anyway not countes as binary*lab was still 0
-                                            #       however, the last blobl (label==maxlabel) was not counted as range(maxlabel) does not include maxlabel
-                t_p = pd.DataFrame(columns=['time','itime','label','size','precip','ilat','ilon','lat','lon'],data=np.zeros([1,9]))
-                binary = (conv_obj==lab)
-                size = np.nansum(binary)
-                if size < 50: continue
+        chunk_size = 100
+        min_object_size = 50
+        property_columns = [
+            'time', 'itime', 'label', 'size', 'precip', 'a_precip',
+            'ilat', 'ilon', 'lat', 'lon',
+        ]
+        sce_prefix = os.path.join(
+            out_directory,
+            f'03_era5-pressure-levels_UTCDaily.SCE.{run_tag}',
+        )
+        csv_chunk_files = []
+        nc_chunk_files = []
+        tracked_regions_chunk = np.zeros(
+            (
+                min(chunk_size, maxtime),
+                conv.sizes['latitude'],
+                conv.sizes['longitude'],
+            ),
+            dtype=np.int32,
+        )
+        latitude_values = conv.latitude.values
+        longitude_values = conv.longitude.values
+        valid_time_values = conv.valid_time.values
 
-                precip = np.nansum(cp_r.isel(valid_time=t) * (conv_obj==lab))
-                if precip == 0: continue
+        for chunk_start in range(0, maxtime, chunk_size):
+            chunk_tic = timeit.default_timer()
+            chunk_stop = min(chunk_start + chunk_size, maxtime)
+            chunk_length = chunk_stop - chunk_start
+            tracked_regions_chunk.fill(0)
+            tracked_property_records = []
 
-                tracked_regions[t,:,:]+= binary*lab
+            # Read 100 days in one scheduler call. This avoids both the former
+            # per-object reads and one Dask round trip per field and day.
+            conv_chunk, cp_chunk = dask.compute(
+                conv.isel(valid_time=slice(chunk_start, chunk_stop)).data,
+                cp_r.isel(valid_time=slice(chunk_start, chunk_stop)).data,
+            )
+            conv_chunk = np.asarray(conv_chunk, dtype=bool)
+            cp_chunk = np.asarray(cp_chunk)
 
-                yy,xx = np.where(binary)
-                ilon = np.nanmean(xx); ilat = np.nanmean(yy)
-                ilon2 = np.round(ilon).astype(int); ilat2 = np.round(ilat).astype(int)
+            for chunk_t in range(chunk_length):
+                t = chunk_start + chunk_t
+                conv_obj = label(conv_chunk[chunk_t])
+                cp_t = cp_chunk[chunk_t]
 
-                if ilon2 >= len(conv.longitude): ilon2=len(conv.longitude)-1
-                if ilon2 < 0 : ilon2=0
-                if ilat2 >= len(conv.latitude): ilat2=len(conv.latitude)-1
-                if ilat2 < 0 : ilat2=0
+                for region in regionprops(conv_obj):
+                    size = int(region.area)
+                    if size < min_object_size:
+                        continue
 
-                lon = conv.longitude.isel(longitude=ilon2); lat = conv.latitude.isel(latitude=ilat2)
-                t_p['itime']=t
-                t_p['time']=conv.valid_time.isel(valid_time=t).values
-                t_p['label']=lab
-                t_p['size']=size
-                t_p['precip']=precip
-                t_p['a_precip']=np.nansum(cp_bin.isel(valid_time=t) * (conv_obj==lab))
-                t_p['ilat']=ilat
-                t_p['ilon']=ilon
-                t_p['lat']=lat.values
-                t_p['lon']=lon.values
+                    # Work inside the object's bounding box instead of constructing
+                    # a full-domain boolean mask for every object.
+                    object_mask = region.image
+                    cp_values = cp_t[region.slice][object_mask]
+                    precip = float(np.nansum(cp_values))
+                    if precip == 0:
+                        continue
 
-                tracked_properties = pd.concat([tracked_properties,t_p])
-            # intermediate save (flush) i.e save every 100 time steps of the growing DataFrame into (*.csv and *.nc)
-            do_flush = (t + 1) % 100 == 0 or t == maxtime - 1
-            if do_flush: 
-                chunk_stop = t + 1 # by specifying chunk stop we avoid that the maxtime chunk overlaps with second to last chunk
-                toc = timeit.default_timer()
-                print('Timestep '+str(t)+' out of '+str(maxtime)+', duration '+str((toc-tic)/60)+' min', flush=True)
-                tracked_properties.to_csv(SCE_OBJ_fname_csv.replace("tttt",str(t))) # time step specific fname
-                tracked_properties = pd.DataFrame(columns=['time','itime','label','size','precip','ilat','ilon','lat','lon'])
-                tracked_regions_xr = xr.DataArray(
-                    tracked_regions[chunk_start:chunk_stop, :, :],                      # New data
-                    coords=conv.isel(valid_time=slice(chunk_start, chunk_stop)).coords, # Retain the original coordinates
-                    dims=conv.dims,                                                     # Retain the original dimensions
-                    name="SCE_ID",
-                )
-                # tracked_regions_xr = copy.deepcopy(conv[chunk_start:chunk_stop,:,:])
-                # tracked_regions_xr.data = conv_obj[chunk_start:chunk_stop,:,:]
-                chunk_start = chunk_stop # prepare for next iteration
-                print(tracked_regions_xr, flush = True)
-                print(SCE_OBJ_fname_csv.replace("tttt",str(t)), flush=True)
-                print(SCE_OBJ_fname_nc.replace("tttt",str(t)), flush=True)
-                tracked_regions_xr.to_netcdf(SCE_OBJ_fname_nc.replace("tttt",str(t)), mode='w') # time step specific fname mode='w' leads to overwriting
+                    tracked_region = tracked_regions_chunk[chunk_t][region.slice]
+                    tracked_region[object_mask] = region.label
+
+                    ilat, ilon = region.centroid
+                    ilat2 = int(np.clip(np.rint(ilat), 0, len(latitude_values) - 1))
+                    ilon2 = int(np.clip(np.rint(ilon), 0, len(longitude_values) - 1))
+
+                    tracked_property_records.append({
+                        'time': valid_time_values[t],
+                        'itime': t,
+                        'label': int(region.label),
+                        'size': size,
+                        'precip': precip,
+                        'a_precip': int(np.count_nonzero(cp_values > 0)),
+                        'ilat': float(ilat),
+                        'ilon': float(ilon),
+                        'lat': latitude_values[ilat2],
+                        'lon': longitude_values[ilon2],
+                    })
+
+            # Flush the current 100-day buffers to CSV and NetCDF.
+            chunk_end = chunk_stop - 1
+            csv_chunk_fname = f'{sce_prefix}.{chunk_end:05d}.csv'
+            nc_chunk_fname = f'{sce_prefix}.{chunk_end:05d}.nc'
+
+            tracked_properties = pd.DataFrame.from_records(
+                tracked_property_records,
+                columns=property_columns,
+            )
+            tracked_properties.to_csv(csv_chunk_fname, index=False)
+            tracked_regions_xr = xr.DataArray(
+                tracked_regions_chunk[:chunk_length],
+                coords=conv.isel(valid_time=slice(chunk_start, chunk_stop)).coords,
+                dims=conv.dims,
+                name="SCE_ID",
+            )
+            tracked_regions_xr.to_netcdf(nc_chunk_fname, mode='w')
+            csv_chunk_files.append(csv_chunk_fname)
+            nc_chunk_files.append(nc_chunk_fname)
+
+            chunk_toc = timeit.default_timer()
+            print(
+                f'Timesteps {chunk_start}-{chunk_end} out of {maxtime}, '
+                f'duration {(chunk_toc - chunk_tic) / 60:.2f} min',
+                flush=True,
+            )
+            print(csv_chunk_fname, flush=True)
+            print(nc_chunk_fname, flush=True)
 
         if verbose: print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),': saving final data', flush=True)
-        # tracked_properties.to_csv(scr_data+str(t)+'conv_obj.csv')
-
-
         tocc = timeit.default_timer()
         print('total script time '+str((tocc-ticc)/60)+' min', flush=True)
 
@@ -347,46 +367,32 @@ if __name__ == "__main__":
         # MERGE DATA
         print('merging data', flush=True)
         
-        files = sorted(glob(SCE_OBJ_fname_csv.replace("tttt",'[0-9]*')))
-        # correctly order files, to retrieve ordered CSV. Previously they were ordered as:
-            # 03_era5-pressure-levels_UTCDaily.SCE.9000.nc
-            # 03_era5-pressure-levels_UTCDaily.SCE.900.csv
-            # 03_era5-pressure-levels_UTCDaily.SCE.900.nc
-            # 03_era5-pressure-levels_UTCDaily.SCE.9100.csv
-            # 03_era5-pressure-levels_UTCDaily.SCE.9100.nc
-        def chunk_number(path):
-            return int(re.search(r"\.SCE\.(\d+)\.(?:csv|nc)$", path).group(1))
-        files = sorted(files, key=chunk_number)
-        #pprint.pp(files)
-        a1=0
-        for file in files:
-            if a1==0:
-                tracked_properties = pd.read_csv(file)
-                print(tracked_properties.shape, flush=True)
-            else:
-                tracked_properties_2 =  pd.read_csv(file)
-                print(tracked_properties_2.shape, flush=True)
-                tracked_properties = pd.concat([tracked_properties,tracked_properties_2])
-                print(tracked_properties.shape, flush=True)
-            a1+=1
-        tracked_properties = tracked_properties.drop(columns='Unnamed: 0')
-
+        tracked_properties = pd.concat(
+            [pd.read_csv(path) for path in csv_chunk_files],
+            ignore_index=True,
+        )
         print(tracked_properties.shape, flush=True)
-        tracked_properties.to_csv(SCE_OBJ_fname_csv.replace("tttt","all-steps")) # store final
+        tracked_properties.to_csv(f'{sce_prefix}.all-steps.csv', index=False)
 
-        files = glob(SCE_OBJ_fname_nc.replace("tttt",'[0-9]*'))
-        # correctly order files
-        files = sorted(files, key=chunk_number)
-        #pprint.pp(files)
-        data = xr.open_mfdataset(files).rename_vars({'__xarray_dataarray_variable__':'SCE_ID'})
+        expected_valid_time = valid_time_values.copy()
+        conv_source.close()
+        sfc_data_1.close()
 
-        # check for non-overlapping time steps
-        if not data.indexes["valid_time"].is_monotonic_increasing:
-            raise ValueError("Output valid_time is not monotonic")
-        if data.indexes["valid_time"].has_duplicates:
-            raise ValueError("Output contains duplicate valid_time values")
-        print(data, flush = True)
-        data.to_netcdf(SCE_OBJ_fname_nc.replace("tttt","all-steps"), mode='w') # mode='w' leads to overwriting
+        with xr.open_mfdataset(
+            nc_chunk_files,
+            combine='nested',
+            concat_dim='valid_time',
+            join='exact',
+        ) as data:
+            # Check that every requested timestep occurs exactly once and in order.
+            if not data.indexes["valid_time"].is_monotonic_increasing:
+                raise ValueError("Output valid_time is not monotonic")
+            if data.indexes["valid_time"].has_duplicates:
+                raise ValueError("Output contains duplicate valid_time values")
+            if not np.array_equal(data.valid_time.values, expected_valid_time):
+                raise ValueError("Output valid_time does not match the requested input period")
+            print(data, flush=True)
+            data.to_netcdf(f'{sce_prefix}.all-steps.nc', mode='w')
 
         # plt.figure()
         # data.sel(longitude = slice(0,30), latitude = slice(65,25)).isel(valid_time=181)
@@ -394,8 +400,6 @@ if __name__ == "__main__":
         # data.sel(longitude = slice(0,30), latitude = slice(65,25)
         #                 ).sel(valid_time="2022-06-27")['SCE'].plot();
         # plt.savefig('figure_SCE.png')
-
-        # xr.open_dataset(SCE_OBJ_fname_nc.replace("tttt","all-steps"))
 
                         # # For output..... TODO
                         # compr_level = 5
