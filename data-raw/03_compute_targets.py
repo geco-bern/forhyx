@@ -10,37 +10,18 @@
 ### Step 1: Import Libraries 
 # Import the required libraries:
 import argparse
-import os, fnmatch
-import pprint
-import time
-import xarray as xr
+import fnmatch
+import os
+import re
+import timeit
+from datetime import datetime
+
+import dask
 import numpy as np
 import pandas as pd
+import xarray as xr
 from dask.distributed import Client, LocalCluster
-import dask
-import geopandas as gpd
-import regionmask
-import re
-
-import datetime as dt
-
-import cartopy.crs as ccrs
-#import library.utils as utils
-#import library.io as io
-#import skimage.morphology as skimo
-import skimage.transform as skit
-import skimage
-# import metpy
-
-from scipy.ndimage import convolve
-import timeit
-from glob import glob
-from datetime import datetime
-import dask
-import argparse as ap
-
-# # for plotting
-import matplotlib.pyplot as plt
+from skimage.measure import label, regionprops
 
 input_path    = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily'
 out_directory = '/storage/scratch/giub_geco/fbernhard/FORHYX/'
@@ -57,12 +38,12 @@ dask.config.set({
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Download ERA5 / ERA5Land data from the Climate Data Store (CDS).',
+        description='Compute daily severe convective environments from ERA5 data.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('--start-year', type=int,
+    parser.add_argument('--start-year', type=int, required=True,
                          help="Start year for filtering input files (inclusive).")
-    parser.add_argument('--end-year', type=int,
+    parser.add_argument('--end-year', type=int, required=True,
                          help="End year for filtering input files (inclusive).")
     return parser.parse_args()
 
@@ -74,27 +55,73 @@ def list_netcdf_files(root_dir, pattern):
                 netcdf_files.append(os.path.join(root, filename))
     return netcdf_files
 
+
+def select_yearly_files(netcdf_files, variable, start_year, end_year):
+    """Select exactly one yearly NetCDF file per requested year and variable."""
+    year_pattern = re.compile(r"\.(\d{4})\.nc$")
+    files_by_year = {}
+
+    for path in netcdf_files:
+        filename = os.path.basename(path)
+        if f".{variable}." not in filename:
+            continue
+
+        match = year_pattern.search(filename)
+        if match is None:
+            continue
+
+        year = int(match.group(1))
+        if not start_year <= year <= end_year:
+            continue
+        if year in files_by_year:
+            raise ValueError(
+                f"More than one input file found for {variable} in {year}: "
+                f"{files_by_year[year]} and {path}"
+            )
+        files_by_year[year] = path
+
+    missing_years = sorted(set(range(start_year, end_year + 1)) - files_by_year.keys())
+    if missing_years:
+        raise FileNotFoundError(
+            f"Missing {variable} input files for years: {missing_years}"
+        )
+
+    return [files_by_year[year] for year in sorted(files_by_year)]
+
 if __name__ == "__main__":
-    args = parse_args();
+    args = parse_args()
     
     start_year_requested = args.start_year
     end_year_requested = args.end_year
 
+    if start_year_requested > end_year_requested:
+        raise ValueError(
+            f"start year ({start_year_requested}) must not be after "
+            f"end year ({end_year_requested})"
+        )
+
     start_date_str = str(start_year_requested) + "-01-01"
     end_date_str   = str(end_year_requested) + "-12-31"
-    
-    cluster = LocalCluster(n_workers=min(64, int(os.environ['SLURM_CPUS_PER_TASK'])), threads_per_worker=1)
+    run_tag = f"{start_year_requested:04d}-{end_year_requested:04d}"
+    os.makedirs(out_directory, exist_ok=True)
+
+    n_workers = min(64, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)))
     # os.environ['SLURM_NTASKS'] # TODO: determine what to use in the next line
     # os.environ['SLURM_NPROCS'] # TODO: determine what to use in the next line
     # cluster = LocalCluster(n_workers=min(64, int(os.environ['SLURM_NPROCS'])), threads_per_worker=1)
-    # client = Client(address=cluster)
-    with Client(address=cluster) as client:
+    with LocalCluster(n_workers=n_workers, threads_per_worker=1) as cluster, Client(cluster) as client:
         print("Cluster setup: ", flush=True)
         print(client, flush=True)
         print(client.dashboard_link, flush=True)
 
-        shear_fname = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.500_925_shear.nc')
-        conv_fname = os.path.join(out_directory, f'03_era5-pressure-levels_UTCDaily.conv.nc')
+        shear_fname = os.path.join(
+            out_directory,
+            f'03_era5-pressure-levels_UTCDaily.500_925_shear.{run_tag}.nc',
+        )
+        conv_fname = os.path.join(
+            out_directory,
+            f'03_era5-pressure-levels_UTCDaily.conv.{run_tag}.nc',
+        )
         verbose = True
         
         #all_needed_vars_pressure_level = ['500.mean_u','500.mean_v','925.mean_u','925.mean_v'] Not named like this
@@ -107,20 +134,32 @@ if __name__ == "__main__":
         file_pattern = f'*_UTCDaily.*.nc'
         netcdf_files = list_netcdf_files(input_path, file_pattern)
         netcdf_files.sort()
-        # pprint.pp(netcdf_files)
 
-        all_vars = all_needed_vars_pressure_level + all_needed_vars_single_level
-        vars_regex = re.compile(r'.*\.(?:' + '|'.join(map(re.escape, all_vars)) + r')\..*\.nc$')
-        netcdf_files2 = [ s for s in netcdf_files if vars_regex.match(s) ]
-
-        print("All files to treat:", flush=True)
-        pprint.pp(netcdf_files2)
+        files_by_variable = {
+            variable: select_yearly_files(
+                netcdf_files,
+                variable,
+                start_year_requested,
+                end_year_requested,
+            )
+            for variable in all_needed_vars_pressure_level + all_needed_vars_single_level
+        }
+        print(
+            f"Input years: {run_tag}; "
+            + ", ".join(
+                f"{variable}: {len(paths)} files"
+                for variable, paths in files_by_variable.items()
+            ),
+            flush=True,
+        )
 
         ### Step 4: Compute severe convective environments (SCE) (code adapted from https://github.com/feldmann-m/EU_conv)
         #### Step 4a: compute shear
-        vars_pl_regex = re.compile(r'.*\.(?:' + '|'.join(map(re.escape, all_needed_vars_pressure_level)) + r')\..*\.nc$')
-        netcdf_files_on_pressure_level = [ s for s in netcdf_files2 if vars_pl_regex.match(s) ]
-        # pprint.pp(netcdf_files_on_pressure_level)
+        netcdf_files_on_pressure_level = sorted(
+            path
+            for variable in all_needed_vars_pressure_level
+            for path in files_by_variable[variable]
+        )
         
         # open pressure level data
         pl_data = xr.open_mfdataset(
@@ -129,7 +168,7 @@ if __name__ == "__main__":
             engine="h5netcdf", 
             parallel =True, 
             compat='no_conflicts',
-            join='inner', #join='exact', # TODO: go back to exact
+            join='exact',
             chunks={"valid_time": "auto", "latitude": "auto", "longitude": "auto"})
 
         pl_data = pl_data.sel(valid_time = slice(start_date_str, end_date_str))
@@ -164,9 +203,11 @@ if __name__ == "__main__":
         sfc_data_2_dataset.to_netcdf(shear_fname, mode='w') # mode='w' leads to overwriting
 
         #### Step 4b: compute gridpoint-wise boolean if convective
-        vars_sl_regex = re.compile(r'.*\.(?:' + '|'.join(map(re.escape, all_needed_vars_single_level)) + r')\..*\.nc$')
-        netcdf_files_on_single_level = [ s for s in netcdf_files2 if vars_sl_regex.match(s) ]
-        # pprint.pp(netcdf_files_on_single_level)
+        netcdf_files_on_single_level = sorted(
+            path
+            for variable in all_needed_vars_single_level
+            for path in files_by_variable[variable]
+        )
         
         # open single level data
         sfc_data_1 = xr.open_mfdataset(
