@@ -39,7 +39,10 @@ pwd
 
 cd ~/GitHub/fabern/forhyx/data-raw
 
-rm -r /storage/scratch/giub_geco/fbernhard/FORHYX/03* # delete old outputs
+# NOTE: without deleting old outputs we could run the script again to compute only the missing years (e.g. 2024-2025) 
+#       and append them to the existing outputs. However, if we want to recompute everything, we should delete 
+#       the old outputs first.
+# rm -r /storage/scratch/giub_geco/fbernhard/FORHYX/03* # delete old outputs
 
 echo "Start python script: $(date --rfc-3339=seconds)"
 conda activate forhyx
