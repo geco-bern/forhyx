@@ -2,6 +2,7 @@
 #SBATCH --job-name="03_FORHYX_compute_SCE_1974-2025"
 #SBATCH --time=168:00:00        ### computing SCE for 1974-2003 takes about 18 hours (36 CPU), i.e. for one year about 0.6 hours.
                                 ###               for 1974-2025 takes about 32 hours (36 CPU), i.e. for one year about 0.65 hours
+                                ### (optimized) computing SCE for 1974-1974 takes about 3 mins (36 CPU), i.e. for one year about 0.05 hours.
 #SBATCH --account=invest          ### invest           ### FOR DEVELOPMENT: gratis
 #SBATCH --qos=job_icpu-stocker    ### job_icpu-stocker ### FOR DEVELOPMENT: job_debug (AND ensure not to use capacity storage!)
 #SBATCH --ntasks=1             # nr of tasks (processes), used for MPI jobs that may run distributed on multiple compute nodes

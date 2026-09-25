@@ -22,8 +22,8 @@ dask.config.set({
 # import matplotlib.pyplot as plt
 
 pcwd_input_path = '/storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_03_daily_pcwd.narm_v2-doy-reset_netcdf'
-sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc'
-#sce_input_path = '/storage/scratch/giub_geco/fbernhard/FORHYX/daily-03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc' # backup rename
+#sce_input_path = # see below args: '/storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc'
+#sce_input_path = # see below args: '/storage/scratch/giub_geco/fbernhard/FORHYX/daily-03_era5-pressure-levels_UTCDaily.SCE.all-steps.nc' # backup rename
 regions = gpd.read_file('/storage/homefs/fb24k097/GitHub/fabern/forhyx/data/regions/shapefile/regions.shp')
 
 def parse_args():
@@ -31,8 +31,10 @@ def parse_args():
         description='Download ERA5 / ERA5Land data from the Climate Data Store (CDS).',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument('--sce-input-path',
+                        help="Input NetCDF file for daily SCE.YYYY-YYYY.all-steps.nc")
     parser.add_argument('--out-path', default = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/',
-                             help="Root output directory.")
+                        help="Root output directory.")
     parser.add_argument('--start-year', type=int,
                          help="Start year for filtering input files (inclusive).")
     parser.add_argument('--end-year', type=int,
@@ -49,6 +51,8 @@ def list_netcdf_files(root_dir, pattern):
 
 if __name__ == '__main__':
     args = parse_args();
+
+    sce_input_path = args.sce_input_path
 
     # out_directory = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX'
     # start_year_requested = 1954

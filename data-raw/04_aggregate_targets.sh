@@ -1,6 +1,6 @@
 #! /usr/bin/bash -l
 #SBATCH --job-name="04_FORHYX_aggregate_targets"
-#SBATCH --time=01:00:00
+#SBATCH --time=05:00:00     ### aggregating SCE for 1974-2025 takes about X hours (16 CPU), i.e. for one year about XXX hours
 
 #SBATCH --account=invest          ### invest           ### FOR DEVELOPMENT: gratis
 #SBATCH --qos=job_icpu-stocker    ### job_icpu-stocker ### FOR DEVELOPMENT: job_debug (AND ensure not to use capacity storage!)
@@ -34,6 +34,7 @@ cd ~/GitHub/fabern/forhyx/data-raw
 echo "Start python script: $(date --rfc-3339=seconds)"
 conda activate forhyx
 python3 04_aggregate_targets.py \
+    --sce-input-path /storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.1974-2025.all-steps.nc \
     --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/ \
     --start-year 1950 \
     --end-year 2026
