@@ -1,0 +1,19 @@
+# Modified environement.yml file for our Renku project
+# nodejs is added for Claude Code usage within a Renku session
+name: forhyx_renku
+channels:
+  - nodefaults
+  - conda-forge
+dependencies:
+  - python=3.14
+  - cftime
+  - dask
+  - dask-core
+  - distributed
+  - h5netcdf
+  - h5py
+  - netcdf4
+  - numpy
+  - pandas
+  - xarray
+  - nodejs>=20
