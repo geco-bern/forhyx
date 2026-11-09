@@ -43,9 +43,8 @@ ssh ubelix; cd ~; sbatch ~/GitHub/fabern/download-ECMWF-data/aggregate_ERA5land_
 # 1c get current situation of aggregation
 conda activate ecmwf_download
 python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --aggregate-path /storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020/data_derived_00_dailyUTC_v3
-# result: 1950-2025  for # ERA5 single
-# result: 1950-2025  for # ERA5 pressure (1950-1956 missing for 500_900_925.mean_u since ERA5.500_900_925.u.hh.1951.11.nc, ERA5.500_900_925.u.hh.1950.12.nc require re-download)
-# TODO: download 2026 pressure levels and single levels ...
+# result: 1950-2026  for # ERA5 single
+# result: 1950-2026  for # ERA5 pressure
 python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --aggregate-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_00_dailyUTC_v3
 # result: 1950-2026  for # ERA5Land predictors
 ```
@@ -67,7 +66,8 @@ cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/02_aggregate_predictors.sh
 python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14
 python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
 cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/03_compute_targets.sh
-# This took about 15h for 25 years (see slurm-03_FORHYX_compute_SCE_12468414.out). Currently running for 50 years (1974-2025): slurm-03_FORHYX_compute_SCE_1974-2025_15868439.out
+# This took about 15h for 25 years (code data-raw/old-logs/slurm-03_FORHYX_compute_SCE_12468414.out). (was before performance improvement in 28b06e7)
+# This took about 40min for 76 years (code data-raw/slurm-03_FORHYX_compute_SCE_1974-2025_20839493.out)
 
 # ii) PCWD see separate repository geco-bern/cwd_global
 

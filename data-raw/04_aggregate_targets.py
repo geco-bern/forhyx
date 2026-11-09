@@ -80,7 +80,7 @@ if __name__ == '__main__':
 
         ### Step 2: Loop over different target variables
         vars = ['pcwd', 'sce']
-        vars = ['pcwd'] # only aggregate pcwd
+        #vars = ['pcwd'] # only aggregate pcwd
         #vars = ['sce']   # only aggregate sce
         #curr_var = vars[0]
         #curr_var = vars[1]
