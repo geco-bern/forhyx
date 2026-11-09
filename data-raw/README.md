@@ -30,28 +30,8 @@ Postprocess hourly downloaded data
 ```bash
 # step 1) aggregate hourly to daily with code from fabern/download-ECMWF-data repository
 # 1a get current situation:
-python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity TRUE --download-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/
-python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity TRUE --download-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16
-
-
-# # current result:
-# i) ERA5
-# available years 1960-2025 for:
-# directory: /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/
-# to compute: sce and some predictors:
-# variables: 500.z      500_900_925.u  500_900_925.v       cape            ci             cp            sst 
-
-# ii) ERA5-Land
-# available years 1961-1982 and 1982-2025 for:
-# directory: /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16
-# to compute: other-predictors:
-# variables: d2m           snowc          swvl1           t2m
-
-# available years 1950-2024 for:
-# directory: /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land_1950-2024
-# to compute: cwd_global:
-# variables: d2m            pev             sp            ssr            ssrd           str            t2m             tp            u10            v10
-# and new download: directory: /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2026-2026_run2026-08-10
+python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --download-path /storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020/data
+python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --download-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data
 
 # 1b compute aggregation
 # i) ERA5
@@ -61,14 +41,13 @@ ssh ubelix; cd ~; sbatch ~/GitHub/fabern/download-ECMWF-data/aggregate_ERA5press
 ssh ubelix; cd ~; sbatch ~/GitHub/fabern/download-ECMWF-data/aggregate_ERA5land_UTCdaily.sh # ERA5-Land
 
 # 1c get current situation of aggregation
-python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity TRUE --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# result: 1960-2025  for # ERA5 single
-# result: 1974-2025  for # ERA5 pressure
-python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity TRUE --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_UTCDaily
-# result: 1962-2026  for # ERA5Land predictors
-python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity TRUE --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land_2025-2026_forPCWDUpdate/aggregated_UTCDaily
-# result: 2025-2026  for newly downloaded # ERA5Land targets (PCWD)
-python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity TRUE --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land_2025-2026_forPCWDUpdate/aggregated_UTCDaily
+conda activate ecmwf_download
+python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --aggregate-path /storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020/data_derived_00_dailyUTC_v3
+# result: 1950-2025  for # ERA5 single
+# result: 1950-2025  for # ERA5 pressure (1950-1956 missing for 500_900_925.mean_u since ERA5.500_900_925.u.hh.1951.11.nc, ERA5.500_900_925.u.hh.1950.12.nc require re-download)
+# TODO: download 2026 pressure levels and single levels ...
+python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --aggregate-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_00_dailyUTC_v3
+# result: 1950-2026  for # ERA5Land predictors
 ```
 
 
@@ -78,12 +57,8 @@ python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECM
 
 # 2a) PREDICTORS:
 # GO TO FORHYX REPOSITORY AND DO:
-# check available years for ERA5-Land:
-python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_UTCDaily
-# check available years for ERA5-Land:
-python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-
-# run aggregation to predictors
+# First, check available years for ERA5-Land and ERA5 with the above python3 script using `--aggregate-path`
+# Second, run aggregation to predictors
 cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/02_aggregate_predictors.sh
 
 

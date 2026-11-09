@@ -1,6 +1,6 @@
 #! /usr/bin/bash -l
 #SBATCH --job-name="02_FORHYX_aggregate_predictors"
-#SBATCH --time=12:00:00
+#SBATCH --time=3-12:00:00
 
 #SBATCH --account=invest          ### invest           ### FOR DEVELOPMENT: gratis
 #SBATCH --qos=job_icpu-stocker    ### job_icpu-stocker ### FOR DEVELOPMENT: job_debug (AND ensure not to use capacity storage!)
@@ -36,16 +36,16 @@ echo "Start python script: $(date --rfc-3339=seconds)"
 conda activate forhyx
 
 python3 02_aggregate_predictors.py --dataset-type era5 \
-    --input-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily \
+    --input-path /storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020/data_derived_00_dailyUTC_v3 \
     --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/ \
-    --start-year 1974 \
-    --end-year 2025
+    --start-year 1950 \
+    --end-year 2026
 
 python3 02_aggregate_predictors.py --dataset-type era5-land \
-    --input-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_UTCDaily \
+    --input-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_00_dailyUTC_v3 \
     --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/ \
-    --start-year 1962 \
-    --end-year 2025
+    --start-year 1950 \
+    --end-year 2026
 
 conda deactivate
 
@@ -63,31 +63,22 @@ echo "Finished on: $(date --rfc-3339=seconds)"
 
 
 # TO CHECK FOR INPUT:
-#input_path = '/storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/' # era5-single and era5-pressure
 #input_path = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_global' # era5land
+#input_path = '/storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_00_dailyUTC_v3' # era5land
 # Check current download and aggregation inventory (if files missing, run the corrsponding download slurm scripts)
 # # ERA5-Land:
-# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/
+# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/
 # ### NOTE: for predictors: For 1962-2026 with 't2m', 'd2m', 'swvl1', 'snowc':  nothing missing
 # ### NOTE: for targets:    For 2020-2026 with 'ssr','str','tp','sp','t2m'   :  nothing missing (have all of this from earlier download)
-# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5Land-T_2000-2026_run2026-07-16/aggregated_UTCDaily
+# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_00_dailyUTC_v3
 # ### NOTE: for predictors: For 1962-2025 with 'mean_t2m', 'mean_d2m', 'mean_swvl1', 'mean_snowc':  nothing missing
 # ### ### NOTE: for targets:    For 2024-2026 with 'tot_ssr','tot_str','tot_tp','mean_sp','mean_t2m' :  all of 'tot_ssr','tot_str','tot_tp','mean_sp' missing
 
 # # ERA5:
 # python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14
-# ### NOTE: for predictors: For 1960-2026 with z.500, sst, siconc: nothing missing
-# ### NOTE: for targets:    For 1960-2026 with cape, cp, 500.u,500.v,925.u,925.v: except for u.v: missing Sep 1973
-# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# cd /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# rsync -avz --include="*/" --include="*era5-pressure-levels_UTCDaily.500.mean_z*" --exclude="*" /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/ /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# rsync -avz --include="*/" --include="*era5-single-level_UTCDaily.mean_siconc*" --exclude="*" /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/ /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# rsync -avz --include="*/" --include="*era5-single-level_UTCDaily.mean_sst*" --exclude="*" /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/ /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# rsync -avz --include="*/" --include="*era5-pressure-levels_UTCDaily.500_900_925.mean_v*" --exclude="*" /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/ /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# rsync -avz --include="*/" --include="*era5-single-level_UTCDaily.max_cape*" --exclude="*" /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/ /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# rsync -avz --include="*/" --include="*era5-single-level_UTCDaily.tot_cp*" --exclude="*" /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/ /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
-# TODO: rm -r /storage/scratch/giub_geco/fbernhard/ERA5_aggregated_newCodeNewDownload/
-# TODO: change yearly aggregation SLURM script to use new path instead of the rm-r path (line above)
-
+# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020
+# ### NOTE: for predictors: For 1950-2026 with z.500, sst, siconc: nothing missing
+# ### NOTE: for targets:    For 1950-2026 with cape, cp, 500.u,500.v,925.u,925.v: except for u.v: missing Sep 1973
+# python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020/data_derived_00_dailyUTC_v3
 # ### NOTE: for predictors: For 2010-2026 with mean_z.500, mean_sst, mean_siconc: nothing missing
 # ### NOTE: for targets:    For 2010-2026 with max_cape, mean_cp, mean_u500,mean_v500,mean_u925,mean_v925: missing mean_cp, max_cape

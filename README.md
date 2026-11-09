@@ -25,17 +25,20 @@ Required input:
 
 Result in output directory `/storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/`:
 
-    - `FORHYX.targets.pcwd_regional_weekly.csv`
-    - `FORHYX.targets.sce_regional_weekly.csv`
-    - `FORHYX.predictors.era5land.max_t2m.2016-2025.nc`
-    - `FORHYX.predictors.era5land.mean_d2m.2016-2025.nc`
-    - `FORHYX.predictors.era5land.mean_snowc.2016-2025.nc`
-    - `FORHYX.predictors.era5land.mean_swvl1.2016-2025.nc`
-    - `FORHYX.predictors.era5land.mean_t2m.2016-2025.nc`
-    - `FORHYX.predictors.era5land.min_t2m.2016-2025.nc`
-    - `FORHYX.predictors.era5pressure.500_mean_z.2007-2025.nc`
-    - `FORHYX.predictors.era5single.mean_siconc.2010-2025.nc`
-    - `FORHYX.predictors.era5single.mean_sst.2010-2025.nc`
+    - `FORHYX.targets.pcwd_regional_weekly.1954-2026.csv` 
+    - `FORHYX.targets.sce_regional_weekly.csv`   
+    - `FORHYX.predictors.era5land.max_t2m.1950-2026.nc`
+    - `FORHYX.predictors.era5land.mean_d2m.2016-2025.nc` 
+    - `FORHYX.predictors.era5land.mean_snowc.1950-2026.nc`
+    - `FORHYX.predictors.era5land.mean_swvl1.2016-2025.nc` 
+    - `FORHYX.predictors.era5land.mean_t2m.2016-2025.nc`  
+    - `FORHYX.predictors.era5land.min_t2m.1950-2026.nc`
+    - `FORHYX.predictors.era5pressure.500_mean_z.1950-2026.nc`
+    - `FORHYX.predictors.era5single.mean_siconc.1950-2026.nc`
+    - `FORHYX.predictors.era5single.mean_sst.1950-2026.nc`
+
+
+
 
 Temporary data is stored into `/storage/scratch/giub_geco/fbernhard/FORHYX/`
 For further details refer to `data-raw/README.md`.

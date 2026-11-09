@@ -34,7 +34,8 @@ cd ~/GitHub/fabern/forhyx/data-raw
 echo "Start python script: $(date --rfc-3339=seconds)"
 conda activate forhyx
 python3 04_aggregate_targets.py \
-    --sce-input-path /storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.1974-2025.all-steps.nc \
+    --pcwd-input-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_03_daily_pcwd.narm_v2-doy-reset_netcdf \
+    --sce-input-path /storage/scratch/giub_geco/fbernhard/FORHYX/03_era5-pressure-levels_UTCDaily.SCE.1950-2026.all-steps.nc \
     --out-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/FORHYX/ \
     --start-year 1950 \
     --end-year 2026
