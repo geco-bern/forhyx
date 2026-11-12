@@ -32,6 +32,13 @@ Postprocess hourly downloaded data
 # 1a get current situation:
 python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --download-path /storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020/data
 python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --download-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data
+#result: daily downloaded: 1950-2026(Oct):     500.z,500_900_925.u,500_900_925.v,cape,ci,cp,sst
+#result: daily downloaded: 1950-2026(Oct):     d2m,pev,snowc,sp,ssr,ssrd,str,swvl1,t2m,tp,u10,v10                                                      
+#result: daily downloaded: 1960-1999(missing): e,evabs,evavt
+
+#result: daily aggregated: 1950-2026(oct): 500.mean_z,500_900_925.mean_u,500_900_925.mean_v,max_cape,mean_siconc,mean_sst,tot_cp
+#result: daily aggregated: 1950-2026(oct): max_t2m,mean_d2m,mean_snowc,mean_sp,mean_swvl1,mean_t2m,mean_wind10,min_t2m,tot_pev,tot_ssr,tot_ssrd,tot_str,tot_tp
+#result: daily aggregated: missing: mean_u10,mean_v10,tot_e,tot_evabs,tot_evavt   
 
 # 1b compute aggregation
 # i) ERA5
@@ -43,14 +50,13 @@ ssh ubelix; cd ~; sbatch ~/GitHub/fabern/download-ECMWF-data/aggregate_ERA5land_
 # 1c get current situation of aggregation
 conda activate ecmwf_download
 python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --aggregate-path /storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020/data_derived_00_dailyUTC_v3
-# result: 1950-2026  for # ERA5 single
-# result: 1950-2026  for # ERA5 pressure
 python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --check-file-validity FALSE --aggregate-path /storage/capacity/occr_geco/data_2/archive/era5land_munoz-sabater_2021/data_derived_00_dailyUTC_v3
-# result: 1950-2026  for # ERA5Land predictors
+# result: daily aggregated: 1950-2026(oct): 500.mean_z,500_900_925.mean_u,500_900_925.mean_v,max_cape,mean_siconc,mean_sst,tot_cp
+# result: daily aggregated: 1950-2026(oct): max_t2m,mean_d2m,mean_snowc,mean_sp,mean_swvl1,mean_t2m,mean_wind10,min_t2m,tot_pev,tot_ssr,tot_ssrd,tot_str,tot_tp
+# result: daily aggregated: missing: mean_u10,mean_v10,tot_e,tot_evabs,tot_evavt   
+
 ```
-
-
-## Derive preidction targets and aggregate to coarser spatial and temporal resolution for the ML workflow
+## Derive prediction targets and aggregate to coarser spatial and temporal resolution for the ML workflow
 ```bash
 # step 2) compute targets and compute aggregated (forhyx) with code from fabern/forhyx repository
 
@@ -60,16 +66,14 @@ python3 /storage/homefs/fb24k097/GitHub/fabern/download-ECMWF-data/inventory_ECM
 # Second, run aggregation to predictors
 cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/02_aggregate_predictors.sh
 
-
 # 2b) TARGETS:
 # i) SCE:
-python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14
-python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --aggregate-path /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily
 cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/03_compute_targets.sh
 # This took about 15h for 25 years (code data-raw/old-logs/slurm-03_FORHYX_compute_SCE_12468414.out). (was before performance improvement in 28b06e7)
 # This took about 40min for 76 years (code data-raw/slurm-03_FORHYX_compute_SCE_1974-2025_20839493.out)
 
-# ii) PCWD see separate repository geco-bern/cwd_global
+# ii) PCWD 
+# see separate repository geco-bern/cwd_global
 
 # iii) aggregate to lower temporal resolution
 cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/04_aggregate_targets.sh
