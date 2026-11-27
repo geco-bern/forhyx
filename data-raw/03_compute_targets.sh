@@ -14,6 +14,9 @@
 #SBATCH --chdir=GitHub/fabern/forhyx/data-raw  # ensure to omit tilde ~/. Defines the working directory (relative to working directory where you submitted job via `sbatch`). This directory contains your script, and where the --output will be written
 #SBATCH --output=slurm-%x_%j.out        # --output relative to working directory (takes into account --chdir)
 
+
+set -e # Propagate setup and Python failures to Slurm bash script instead of printing success.
+
 # HOWTO: ssh ubelix; cd ~; sbatch ~/GitHub/fabern/forhyx/data-raw/03_compute_targets.sh
 
 # python3 ~/GitHub/fabern/download-ECMWF-data/inventory_ECMWF.py --download-path  /storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14 # TODO: 
@@ -48,8 +51,8 @@ cd ~/GitHub/fabern/forhyx/data-raw
 echo "Start python script: $(date --rfc-3339=seconds)"
 conda activate forhyx
 python3 03_compute_targets.py \
-    --start-year 1974 \
-    --end-year 2025
+    --start-year 1950 \
+    --end-year 2026
 conda deactivate
 
 echo "Finished on: $(date --rfc-3339=seconds)"

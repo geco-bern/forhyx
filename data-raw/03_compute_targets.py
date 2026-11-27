@@ -23,7 +23,8 @@ import xarray as xr
 from dask.distributed import Client, LocalCluster
 from skimage.measure import label, regionprops
 
-input_path    = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily'
+#input_path    = '/storage/capacity/occr_geco/data_2/scratch/fbernhard/ERA5_1996-2025_run2026-07-14/aggregated_UTCDaily'
+input_path    = '/storage/capacity/occr_geco/data_2/archive/era5_hersbach_2020/data_derived_00_dailyUTC_v3'
 out_directory = '/storage/scratch/giub_geco/fbernhard/FORHYX/'
 
 # ll -h /storage/scratch/giub_geco/fbernhard/FORHYX/03*
@@ -394,6 +395,13 @@ if __name__ == "__main__":
             print(data, flush=True)
             data.to_netcdf(f'{sce_prefix}.all-steps.nc', mode='w')
 
+        print('Output files saved; retiring Dask workers.', flush=True)
+        # Retire workers while the scheduler is still available to them.
+        client.retire_workers(
+            workers=list(client.scheduler_info()['workers']),
+            close_workers=True,
+        )
+
         # plt.figure()
         # data.sel(longitude = slice(0,30), latitude = slice(65,25)).isel(valid_time=181)
         # data.sel(longitude = slice(0,30), latitude = slice(65,25)).isel(valid_time=181)['SCE'].plot();
@@ -409,3 +417,5 @@ if __name__ == "__main__":
                         # 'longitude':  36,
                         # 'pressure_level': 3, # NOTE: only used for pressure level ERA5 (UNUSED FOR PREDICTORS)
                         # }
+
+    print(f'SCE computation completed successfully for {run_tag}.', flush=True)
